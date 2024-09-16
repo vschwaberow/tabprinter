@@ -1,0 +1,27 @@
+[package]
+name = "tabprinter"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["Volker Schwaberow <volker@schwaberow.de>"]
+
+[profile.release]
+strip = "symbols"
+lto = true
+codegen-units = 1
+opt-level = "s"
+
+[[example]]
+name = "basic_usage"
+path = "examples/basic_usage.rs"
+
+[[example]]
+name = "different_styles"
+path = "examples/different_styles.rs"
+
+[[example]]
+name = "custom_data"
+path = "examples/custom_data.rs"
+
+[dependencies]
+termcolor = "1.4.1"
