@@ -1,6 +1,6 @@
 [package]
 name = "tabprinter"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT"
 description = "tabprinter is a Rust library for creating and printing formatted tables in the terminal. It supports various table styles and offers both color and non-color output options."
