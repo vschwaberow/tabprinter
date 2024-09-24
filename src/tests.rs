@@ -43,6 +43,12 @@ fn test_add_column() {
 }
 
 #[test]
+fn test_csv_usage() {
+    let table = Table::from_csv("examples/data.csv").unwrap();
+    table.print().unwrap();
+}
+
+#[test]
 fn test_add_row() {
     let mut table = Table::new(TableStyle::Simple);
     table.add_column("Test", 10, Alignment::Left);
