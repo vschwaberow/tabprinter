@@ -20,6 +20,12 @@ pub enum TableStyle {
     Banner,
     Block,
     Amiga,
+    Minimal,
+    Compact,
+    Markdown,
+    Dotted,
+    Heavy,
+    Neon,
 }
 
 #[derive(Clone, Copy)]
@@ -49,7 +55,7 @@ macro_rules! define_styles {
             $($inner_field:ident: $value:expr),+
         $(,)?}),+
     $(,)?}),+) => {
-        const STYLES: [TableStyleConfig; 8] = [
+        const STYLES: [TableStyleConfig; 14] = [
             $(
                 TableStyleConfig {
                     $($field: LineStyle {
@@ -109,6 +115,42 @@ define_styles! {
         below_header: { begin: "", hline: "", sep: "", end: "" },
         bottom: { begin: "", hline: "", sep: "", end: "" },
         row: { begin: "", hline: "", sep: "", end: "" }
+    },
+     Minimal: {
+        top: { begin: "┌", hline: "─", sep: "┬", end: "┐" },
+        below_header: { begin: "├", hline: "─", sep: "┼", end: "┤" },
+        bottom: { begin: "└", hline: "─", sep: "┴", end: "┘" },
+        row: { begin: "│", hline: "", sep: "│", end: "│" }
+    },
+    Compact: {
+        top: { begin: "┌", hline: "─", sep: "┬", end: "┐" },
+        below_header: { begin: "├", hline: "─", sep: "┼", end: "┤" },
+        bottom: { begin: "└", hline: "─", sep: "┴", end: "┘" },
+        row: { begin: "│", hline: "", sep: "│", end: "│" }
+    },
+    Markdown: {
+        top: { begin: "", hline: "", sep: "", end: "" },
+        below_header: { begin: "|", hline: "-", sep: "|", end: "|" },
+        bottom: { begin: "", hline: "", sep: "", end: "" },
+        row: { begin: "|", hline: "", sep: "|", end: "|" }
+    },
+    Dotted: {
+        top: { begin: ".", hline: ".", sep: ".", end: "." },
+        below_header: { begin: ":", hline: ".", sep: ":", end: ":" },
+        bottom: { begin: "'", hline: ".", sep: "'", end: "'" },
+        row: { begin: ":", hline: "", sep: ":", end: ":" }
+    },
+    Heavy: {
+        top: { begin: "┏", hline: "━", sep: "┳", end: "┓" },
+        below_header: { begin: "┣", hline: "━", sep: "╋", end: "┫" },
+        bottom: { begin: "┗", hline: "━", sep: "┻", end: "┛" },
+        row: { begin: "┃", hline: "", sep: "┃", end: "┃" }
+    },
+    Neon: {
+        top: { begin: "┏", hline: "━", sep: "┳", end: "┓" },
+        below_header: { begin: "┣", hline: "━", sep: "╋", end: "┫" },
+        bottom: { begin: "┗", hline: "━", sep: "┻", end: "┛" },
+        row: { begin: "┃", hline: "", sep: "┃", end: "┃" }
     }
 }
 
@@ -133,6 +175,28 @@ impl Table {
         }
     }
 
+    pub fn from_csv(path: &str) -> io::Result<Self> {
+        let mut reader = csv::Reader::from_path(path)?;
+        let headers = reader.headers()?;
+        let mut table = Table::new(TableStyle::Simple);
+        for header in headers {
+            table.add_column(header, 10, Alignment::Left);
+        }
+        for result in reader.records() {
+            let record = result?;
+            table.add_row(record.iter().map(|s| s.to_string()).collect());
+        }
+        Ok(table)
+    }
+
+    pub fn to_csv(&self, path: &str) -> io::Result<()> {
+        let mut writer = csv::Writer::from_path(path)?;
+        for row in &self.rows {
+            writer.write_record(row)?;
+        }
+        Ok(())
+    }
+
     pub fn print_to_writer(&self, writer: &mut dyn Write) -> io::Result<()> {
         match self.style {
             TableStyle::Simple => self.print_simple(writer),
@@ -143,6 +207,12 @@ impl Table {
             TableStyle::Banner => self.print_styled(writer, &STYLES[5]),
             TableStyle::Block => self.print_styled(writer, &STYLES[6]),
             TableStyle::Amiga => self.print_simple(writer),
+            TableStyle::Minimal => self.print_simple(writer),
+            TableStyle::Compact => self.print_simple(writer),
+            TableStyle::Markdown => self.print_simple(writer),
+            TableStyle::Dotted => self.print_simple(writer),
+            TableStyle::Heavy => self.print_simple(writer),
+            TableStyle::Neon => self.print_simple(writer),
         }
     }
 
@@ -178,6 +248,12 @@ impl Table {
             TableStyle::Banner => self.print_styled(writer, &STYLES[5]),
             TableStyle::Block => self.print_styled(writer, &STYLES[6]),
             TableStyle::Amiga => self.print_amiga_color(writer),
+            TableStyle::Minimal => self.print_styled(writer, &STYLES[7]),
+            TableStyle::Compact => self.print_styled(writer, &STYLES[8]),
+            TableStyle::Markdown => self.print_styled(writer, &STYLES[9]),
+            TableStyle::Dotted => self.print_styled(writer, &STYLES[10]),
+            TableStyle::Heavy => self.print_styled(writer, &STYLES[11]),
+            TableStyle::Neon => self.print_styled(writer, &STYLES[12]),
         }
     }
 
