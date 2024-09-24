@@ -10,6 +10,12 @@ fn main() {
         TableStyle::Banner,
         TableStyle::Block,
         TableStyle::Amiga,
+        TableStyle::Minimal,
+        TableStyle::Compact,
+        TableStyle::Markdown,
+        TableStyle::Dotted,
+        TableStyle::Heavy,
+        TableStyle::Neon,
     ];
     for style in styles.iter() {
         println!("{:?} style:", style);
