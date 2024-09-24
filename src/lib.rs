@@ -175,6 +175,28 @@ impl Table {
         }
     }
 
+    pub fn from_csv(path: &str) -> io::Result<Self> {
+        let mut reader = csv::Reader::from_path(path)?;
+        let headers = reader.headers()?;
+        let mut table = Table::new(TableStyle::Simple);
+        for header in headers {
+            table.add_column(header, 10, Alignment::Left);
+        }
+        for result in reader.records() {
+            let record = result?;
+            table.add_row(record.iter().map(|s| s.to_string()).collect());
+        }
+        Ok(table)
+    }
+
+    pub fn to_csv(&self, path: &str) -> io::Result<()> {
+        let mut writer = csv::Writer::from_path(path)?;
+        for row in &self.rows {
+            writer.write_record(row)?;
+        }
+        Ok(())
+    }
+
     pub fn print_to_writer(&self, writer: &mut dyn Write) -> io::Result<()> {
         match self.style {
             TableStyle::Simple => self.print_simple(writer),
