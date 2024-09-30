@@ -155,6 +155,7 @@ define_styles! {
     }
 }
 
+#[derive(Clone)]
 pub struct Column {
     header: String,
     width: Option<usize>,
@@ -402,6 +403,35 @@ impl Table {
 
     pub fn set_page_size(&mut self, page_size: usize) {
         self.page_size = Some(page_size);
+    }
+
+    pub fn sort_by_column(&mut self, column_index: usize, ascending: bool) {
+        self.rows.sort_by(|a, b| {
+            let cmp = a[column_index].cmp(&b[column_index]);
+            if ascending {
+                cmp
+            } else {
+                cmp.reverse()
+            }
+        });
+    }
+
+    pub fn filter<F>(&self, predicate: F) -> Table
+    where
+        F: Fn(&[String]) -> bool,
+    {
+        let filtered_rows: Vec<Vec<String>> = self
+            .rows
+            .iter()
+            .filter(|row| predicate(row))
+            .cloned()
+            .collect();
+
+        Table {
+            columns: self.columns.clone(),
+            rows: filtered_rows,
+            ..*self
+        }
     }
 
     fn calculate_column_widths(&mut self) {
