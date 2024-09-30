@@ -156,7 +156,7 @@ define_styles! {
 
 pub struct Column {
     header: String,
-    width: Option<usize>, // Change this to Option<usize>
+    width: Option<usize>,
     alignment: Alignment,
 }
 
@@ -164,7 +164,7 @@ pub struct Table {
     columns: Vec<Column>,
     rows: Vec<Vec<String>>,
     style: TableStyle,
-    auto_width: bool, // New field to indicate if auto-width is enabled
+    auto_width: bool,
 }
 
 impl Table {
@@ -173,7 +173,7 @@ impl Table {
             columns: Vec::new(),
             rows: Vec::new(),
             style,
-            auto_width: true, // Enable auto-width by default
+            auto_width: true,
         }
     }
 
@@ -363,7 +363,6 @@ impl Table {
         self.print_line(writer, &style.bottom)
     }
 
-    // New method to calculate column widths
     fn calculate_column_widths(&mut self) {
         if !self.auto_width {
             return;
@@ -376,7 +375,7 @@ impl Table {
                     .chain(std::iter::once(column.header.len()))
                     .max()
                     .unwrap_or(0);
-                column.width = Some(max_width + 2); // Add 2 for padding
+                column.width = Some(max_width + 2);
             }
         }
     }
