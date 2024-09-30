@@ -21,9 +21,9 @@ fn main() {
         println!("{:?} style:", style);
         let mut table = Table::new(*style);
 
-        table.add_column("Name", 10, Alignment::Left);
-        table.add_column("Age", 5, Alignment::Right);
-        table.add_column("City", 15, Alignment::Center);
+        table.add_column("Name", Some(10), Alignment::Left);
+        table.add_column("Age", Some(5), Alignment::Right);
+        table.add_column("City", Some(15), Alignment::Center);
 
         table.add_row(vec![
             "Alice".to_string(),

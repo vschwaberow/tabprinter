@@ -156,7 +156,7 @@ define_styles! {
 
 pub struct Column {
     header: String,
-    width: usize,
+    width: Option<usize>, // Change this to Option<usize>
     alignment: Alignment,
 }
 
@@ -164,6 +164,7 @@ pub struct Table {
     columns: Vec<Column>,
     rows: Vec<Vec<String>>,
     style: TableStyle,
+    auto_width: bool, // New field to indicate if auto-width is enabled
 }
 
 impl Table {
@@ -172,6 +173,7 @@ impl Table {
             columns: Vec::new(),
             rows: Vec::new(),
             style,
+            auto_width: true, // Enable auto-width by default
         }
     }
 
@@ -180,7 +182,7 @@ impl Table {
         let headers = reader.headers()?;
         let mut table = Table::new(TableStyle::Simple);
         for header in headers {
-            table.add_column(header, 10, Alignment::Left);
+            table.add_column(header, Some(10), Alignment::Left);
         }
         for result in reader.records() {
             let record = result?;
@@ -216,7 +218,7 @@ impl Table {
         }
     }
 
-    pub fn add_column(&mut self, header: &str, width: usize, alignment: Alignment) {
+    pub fn add_column(&mut self, header: &str, width: Option<usize>, alignment: Alignment) {
         self.columns.push(Column {
             header: header.to_string(),
             width,
@@ -233,12 +235,14 @@ impl Table {
         self.rows.push(row);
     }
 
-    pub fn print(&self) -> io::Result<()> {
+    pub fn print(&mut self) -> io::Result<()> {
+        self.calculate_column_widths();
         let mut stdout = StandardStream::stdout(ColorChoice::Always);
         self.print_color(&mut stdout)
     }
 
-    pub fn print_color<W: Write + WriteColor>(&self, writer: &mut W) -> io::Result<()> {
+    pub fn print_color<W: Write + WriteColor>(&mut self, writer: &mut W) -> io::Result<()> {
+        self.calculate_column_widths();
         match self.style {
             TableStyle::Simple => self.print_simple(writer),
             TableStyle::Grid => self.print_styled(writer, &STYLES[1]),
@@ -274,25 +278,11 @@ impl Table {
 
     fn print_headers(&self, writer: &mut dyn Write) -> io::Result<()> {
         for (i, column) in self.columns.iter().enumerate() {
+            let width = column.width.unwrap_or(0);
             match column.alignment {
-                Alignment::Left => write!(
-                    writer,
-                    "{:<width$}",
-                    column.header,
-                    width = column.width - 1
-                )?,
-                Alignment::Center => write!(
-                    writer,
-                    "{:^width$}",
-                    column.header,
-                    width = column.width - 1
-                )?,
-                Alignment::Right => write!(
-                    writer,
-                    "{:>width$}",
-                    column.header,
-                    width = column.width - 1
-                )?,
+                Alignment::Left => write!(writer, "{:<width$}", column.header, width = width - 1)?,
+                Alignment::Center => write!(writer, "{:^width$}", column.header, width = width - 1)?,
+                Alignment::Right => write!(writer, "{:>width$}", column.header, width = width - 1)?,
             }
             if i < self.columns.len() - 1 {
                 write!(writer, " ")?;
@@ -303,10 +293,11 @@ impl Table {
 
     fn print_row(&self, writer: &mut dyn Write, row: &[String]) -> io::Result<()> {
         for (column, cell) in self.columns.iter().zip(row.iter()) {
+            let width = column.width.unwrap_or(0);
             match column.alignment {
-                Alignment::Left => write!(writer, "{:<width$}", cell, width = column.width - 1)?,
-                Alignment::Center => write!(writer, "{:^width$}", cell, width = column.width - 1)?,
-                Alignment::Right => write!(writer, "{:>width$}", cell, width = column.width - 1)?,
+                Alignment::Left => write!(writer, "{:<width$}", cell, width = width - 1)?,
+                Alignment::Center => write!(writer, "{:^width$}", cell, width = width - 1)?,
+                Alignment::Right => write!(writer, "{:>width$}", cell, width = width - 1)?,
             }
             write!(writer, " ")?;
         }
@@ -319,7 +310,7 @@ impl Table {
             if i > 0 {
                 write!(writer, "{}", style.sep)?;
             }
-            write!(writer, "{}", style.hline.repeat(column.width + 2))?;
+            write!(writer, "{}", style.hline.repeat(column.width.unwrap_or(0) + 2))?;
         }
         writeln!(writer, "{}", style.end)
     }
@@ -335,15 +326,16 @@ impl Table {
             if i > 0 {
                 write!(writer, "{}", style.sep)?;
             }
+            let width = column.width.unwrap_or(0);
             match column.alignment {
                 Alignment::Left => {
-                    write!(writer, " {:<width$} ", cell.as_ref(), width = column.width)?
+                    write!(writer, " {:<width$} ", cell.as_ref(), width = width)?
                 }
                 Alignment::Center => {
-                    write!(writer, " {:^width$} ", cell.as_ref(), width = column.width)?
+                    write!(writer, " {:^width$} ", cell.as_ref(), width = width)?
                 }
                 Alignment::Right => {
-                    write!(writer, " {:>width$} ", cell.as_ref(), width = column.width)?
+                    write!(writer, " {:>width$} ", cell.as_ref(), width = width)?
                 }
             }
         }
@@ -369,5 +361,23 @@ impl Table {
             self.print_row_styled(writer, row, &style.row)?;
         }
         self.print_line(writer, &style.bottom)
+    }
+
+    // New method to calculate column widths
+    fn calculate_column_widths(&mut self) {
+        if !self.auto_width {
+            return;
+        }
+
+        for (i, column) in self.columns.iter_mut().enumerate() {
+            if column.width.is_none() {
+                let max_width = self.rows.iter()
+                    .map(|row| row[i].len())
+                    .chain(std::iter::once(column.header.len()))
+                    .max()
+                    .unwrap_or(0);
+                column.width = Some(max_width + 2); // Add 2 for padding
+            }
+        }
     }
 }
