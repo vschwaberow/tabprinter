@@ -27,9 +27,9 @@ fn main() {
 
     let mut table = Table::new(TableStyle::FancyGrid);
 
-    table.add_column("Name", 10, Alignment::Left);
-    table.add_column("Age", 5, Alignment::Right);
-    table.add_column("City", 15, Alignment::Center);
+    table.add_column("Name", Some(10), Alignment::Left);
+    table.add_column("Age", Some(5), Alignment::Right);
+    table.add_column("City", Some(15), Alignment::Center);
 
     for person in people {
         table.add_row(vec![person.name, person.age.to_string(), person.city]);

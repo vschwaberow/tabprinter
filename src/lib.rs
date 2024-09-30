@@ -4,6 +4,7 @@
 // Author: Volker Schwaberow <volker@schwaberow.de>
 // Copyright (c) 2024 Volker Schwaberow
 
+use std::cmp;
 use std::io::{self, Write};
 use termcolor::{ColorChoice, ColorSpec, StandardStream, WriteColor};
 
@@ -154,9 +155,10 @@ define_styles! {
     }
 }
 
+#[derive(Clone)]
 pub struct Column {
     header: String,
-    width: usize,
+    width: Option<usize>,
     alignment: Alignment,
 }
 
@@ -164,6 +166,8 @@ pub struct Table {
     columns: Vec<Column>,
     rows: Vec<Vec<String>>,
     style: TableStyle,
+    auto_width: bool,
+    page_size: Option<usize>,
 }
 
 impl Table {
@@ -172,6 +176,8 @@ impl Table {
             columns: Vec::new(),
             rows: Vec::new(),
             style,
+            auto_width: true,
+            page_size: None,
         }
     }
 
@@ -180,7 +186,7 @@ impl Table {
         let headers = reader.headers()?;
         let mut table = Table::new(TableStyle::Simple);
         for header in headers {
-            table.add_column(header, 10, Alignment::Left);
+            table.add_column(header, Some(10), Alignment::Left);
         }
         for result in reader.records() {
             let record = result?;
@@ -216,7 +222,7 @@ impl Table {
         }
     }
 
-    pub fn add_column(&mut self, header: &str, width: usize, alignment: Alignment) {
+    pub fn add_column(&mut self, header: &str, width: Option<usize>, alignment: Alignment) {
         self.columns.push(Column {
             header: header.to_string(),
             width,
@@ -233,12 +239,14 @@ impl Table {
         self.rows.push(row);
     }
 
-    pub fn print(&self) -> io::Result<()> {
+    pub fn print(&mut self) -> io::Result<()> {
+        self.calculate_column_widths();
         let mut stdout = StandardStream::stdout(ColorChoice::Always);
         self.print_color(&mut stdout)
     }
 
-    pub fn print_color<W: Write + WriteColor>(&self, writer: &mut W) -> io::Result<()> {
+    pub fn print_color<W: Write + WriteColor>(&mut self, writer: &mut W) -> io::Result<()> {
+        self.calculate_column_widths();
         match self.style {
             TableStyle::Simple => self.print_simple(writer),
             TableStyle::Grid => self.print_styled(writer, &STYLES[1]),
@@ -274,25 +282,13 @@ impl Table {
 
     fn print_headers(&self, writer: &mut dyn Write) -> io::Result<()> {
         for (i, column) in self.columns.iter().enumerate() {
+            let width = column.width.unwrap_or(0);
             match column.alignment {
-                Alignment::Left => write!(
-                    writer,
-                    "{:<width$}",
-                    column.header,
-                    width = column.width - 1
-                )?,
-                Alignment::Center => write!(
-                    writer,
-                    "{:^width$}",
-                    column.header,
-                    width = column.width - 1
-                )?,
-                Alignment::Right => write!(
-                    writer,
-                    "{:>width$}",
-                    column.header,
-                    width = column.width - 1
-                )?,
+                Alignment::Left => write!(writer, "{:<width$}", column.header, width = width - 1)?,
+                Alignment::Center => {
+                    write!(writer, "{:^width$}", column.header, width = width - 1)?
+                }
+                Alignment::Right => write!(writer, "{:>width$}", column.header, width = width - 1)?,
             }
             if i < self.columns.len() - 1 {
                 write!(writer, " ")?;
@@ -303,10 +299,11 @@ impl Table {
 
     fn print_row(&self, writer: &mut dyn Write, row: &[String]) -> io::Result<()> {
         for (column, cell) in self.columns.iter().zip(row.iter()) {
+            let width = column.width.unwrap_or(0);
             match column.alignment {
-                Alignment::Left => write!(writer, "{:<width$}", cell, width = column.width - 1)?,
-                Alignment::Center => write!(writer, "{:^width$}", cell, width = column.width - 1)?,
-                Alignment::Right => write!(writer, "{:>width$}", cell, width = column.width - 1)?,
+                Alignment::Left => write!(writer, "{:<width$}", cell, width = width - 1)?,
+                Alignment::Center => write!(writer, "{:^width$}", cell, width = width - 1)?,
+                Alignment::Right => write!(writer, "{:>width$}", cell, width = width - 1)?,
             }
             write!(writer, " ")?;
         }
@@ -319,7 +316,11 @@ impl Table {
             if i > 0 {
                 write!(writer, "{}", style.sep)?;
             }
-            write!(writer, "{}", style.hline.repeat(column.width + 2))?;
+            write!(
+                writer,
+                "{}",
+                style.hline.repeat(column.width.unwrap_or(0) + 2)
+            )?;
         }
         writeln!(writer, "{}", style.end)
     }
@@ -335,16 +336,11 @@ impl Table {
             if i > 0 {
                 write!(writer, "{}", style.sep)?;
             }
+            let width = column.width.unwrap_or(0);
             match column.alignment {
-                Alignment::Left => {
-                    write!(writer, " {:<width$} ", cell.as_ref(), width = column.width)?
-                }
-                Alignment::Center => {
-                    write!(writer, " {:^width$} ", cell.as_ref(), width = column.width)?
-                }
-                Alignment::Right => {
-                    write!(writer, " {:>width$} ", cell.as_ref(), width = column.width)?
-                }
+                Alignment::Left => write!(writer, " {:<width$} ", cell.as_ref(), width = width)?,
+                Alignment::Center => write!(writer, " {:^width$} ", cell.as_ref(), width = width)?,
+                Alignment::Right => write!(writer, " {:>width$} ", cell.as_ref(), width = width)?,
             }
         }
         writeln!(writer, "{}", style.end)
@@ -355,6 +351,40 @@ impl Table {
         self.rows
             .iter()
             .try_for_each(|row| self.print_row(writer, row))
+    }
+
+    pub fn print_color_paginated<W: Write + WriteColor>(&self, writer: &mut W) -> io::Result<()> {
+        let page_size = self.page_size.unwrap_or(self.rows.len());
+        let total_pages = (self.rows.len() + page_size - 1) / page_size;
+
+        for page in 0..total_pages {
+            let start_page = page * page_size;
+            let end_page = cmp::min((page + 1) * page_size, self.rows.len());
+
+            writeln!(writer, "Page {} of {}", page + 1, total_pages)?;
+            self.print_page(writer, start_page, end_page)?;
+
+            if page < total_pages - 1 {
+                writeln!(writer, "Press Enter to continue...")?;
+                let mut input = String::new();
+                std::io::stdin().read_line(&mut input)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn print_page<W: Write + WriteColor>(
+        &self,
+        writer: &mut W,
+        start: usize,
+        end: usize,
+    ) -> io::Result<()> {
+        self.print_headers(writer)?;
+        for row in &self.rows[start..end] {
+            self.print_row(writer, row)?;
+        }
+        Ok(())
     }
 
     fn print_styled(&self, writer: &mut dyn Write, style: &TableStyleConfig) -> io::Result<()> {
@@ -369,5 +399,57 @@ impl Table {
             self.print_row_styled(writer, row, &style.row)?;
         }
         self.print_line(writer, &style.bottom)
+    }
+
+    pub fn set_page_size(&mut self, page_size: usize) {
+        self.page_size = Some(page_size);
+    }
+
+    pub fn sort_by_column(&mut self, column_index: usize, ascending: bool) {
+        self.rows.sort_by(|a, b| {
+            let cmp = a[column_index].cmp(&b[column_index]);
+            if ascending {
+                cmp
+            } else {
+                cmp.reverse()
+            }
+        });
+    }
+
+    pub fn filter<F>(&self, predicate: F) -> Table
+    where
+        F: Fn(&[String]) -> bool,
+    {
+        let filtered_rows: Vec<Vec<String>> = self
+            .rows
+            .iter()
+            .filter(|row| predicate(row))
+            .cloned()
+            .collect();
+
+        Table {
+            columns: self.columns.clone(),
+            rows: filtered_rows,
+            ..*self
+        }
+    }
+
+    fn calculate_column_widths(&mut self) {
+        if !self.auto_width {
+            return;
+        }
+
+        for (i, column) in self.columns.iter_mut().enumerate() {
+            if column.width.is_none() {
+                let max_width = self
+                    .rows
+                    .iter()
+                    .map(|row| row[i].len())
+                    .chain(std::iter::once(column.header.len()))
+                    .max()
+                    .unwrap_or(0);
+                column.width = Some(max_width + 2);
+            }
+        }
     }
 }
