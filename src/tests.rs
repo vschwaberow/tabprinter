@@ -5,6 +5,8 @@
 // Copyright (c) 2024 Volker Schwaberow
 
 use super::*;
+use std::str;
+use termcolor::Buffer;
 
 fn create_test_table(style: TableStyle) -> Table {
     let mut table = Table::new(style);
@@ -81,4 +83,74 @@ fn test_print_to_writer() {
     table.print_to_writer(&mut buffer).unwrap();
     let result = String::from_utf8(buffer).unwrap();
     assert!(!result.is_empty());
+}
+
+#[test]
+fn test_custom_header_color() {
+    let mut table = create_test_table(TableStyle::Grid);
+    table.set_header_color(CustomColor::new(255, 0, 0));
+    let mut buffer = Buffer::ansi();
+    table.print_color(&mut buffer).unwrap();
+    let binding = buffer.into_inner();
+    let result = str::from_utf8(&binding).unwrap();
+    assert!(result.contains("\x1b[38;2;255;0;0m"));
+}
+
+#[test]
+fn test_custom_row_color() {
+    let mut table = create_test_table(TableStyle::Grid);
+    table.set_row_color(CustomColor::new(0, 255, 0));
+    let mut buffer = Buffer::ansi();
+    table.print_color(&mut buffer).unwrap();
+    let binding = buffer.into_inner();
+    let result = str::from_utf8(&binding).unwrap();
+    assert!(result.contains("\x1b[38;2;0;255;0m"));
+}
+
+#[test]
+fn test_custom_border_color() {
+    let mut table = create_test_table(TableStyle::Grid);
+    table.set_border_color(CustomColor::new(0, 0, 255));
+    let mut buffer = Buffer::ansi();
+    table.print_color(&mut buffer).unwrap();
+    let binding = buffer.into_inner();
+    let result = str::from_utf8(&binding).unwrap();
+    assert!(result.contains("\x1b[38;2;0;0;255m"));
+}
+
+#[test]
+fn test_all_custom_colors() {
+    let mut table = create_test_table(TableStyle::Grid);
+    table.set_header_color(CustomColor::new(255, 0, 0));
+    table.set_row_color(CustomColor::new(0, 255, 0));
+    table.set_border_color(CustomColor::new(0, 0, 255));
+    let mut buffer = Buffer::ansi();
+    table.print_color(&mut buffer).unwrap();
+    let binding = buffer.into_inner();
+    let result = str::from_utf8(&binding).unwrap();
+    assert!(result.contains("\x1b[38;2;255;0;0m"));
+    assert!(result.contains("\x1b[38;2;0;255;0m"));
+    assert!(result.contains("\x1b[38;2;0;0;255m"));
+}
+
+#[test]
+fn test_custom_colors_with_different_styles() {
+    for style in &[
+        TableStyle::Simple,
+        TableStyle::Grid,
+        TableStyle::FancyGrid,
+        TableStyle::Clean,
+    ] {
+        let mut table = create_test_table(*style);
+        table.set_header_color(CustomColor::new(255, 165, 0));
+        table.set_row_color(CustomColor::new(138, 43, 226));
+        table.set_border_color(CustomColor::new(0, 255, 255));
+        let mut buffer = Buffer::ansi();
+        table.print_color(&mut buffer).unwrap();
+        let binding = buffer.into_inner();
+        let result = str::from_utf8(&binding).unwrap();
+        assert!(result.contains("\x1b[38;2;255;165;0m"));
+        assert!(result.contains("\x1b[38;2;138;43;226m"));
+        assert!(result.contains("\x1b[38;2;0;255;255m"));
+    }
 }
