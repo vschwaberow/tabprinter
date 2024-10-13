@@ -6,7 +6,7 @@
 
 use std::cmp;
 use std::io::{self, Write};
-use termcolor::{ColorChoice, ColorSpec, StandardStream, WriteColor};
+use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 #[cfg(test)]
 mod tests;
@@ -155,6 +155,23 @@ define_styles! {
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct CustomColor {
+    r: u8,
+    g: u8,
+    b: u8,
+}
+
+impl CustomColor {
+    pub fn new(r: u8, g: u8, b: u8) -> Self {
+        CustomColor { r, g, b }
+    }
+
+    fn to_color(&self) -> Color {
+        Color::Rgb(self.r, self.g, self.b)
+    }
+}
+
 #[derive(Clone)]
 pub struct Column {
     header: String,
@@ -168,6 +185,9 @@ pub struct Table {
     style: TableStyle,
     auto_width: bool,
     page_size: Option<usize>,
+    header_color: Option<CustomColor>,
+    row_color: Option<CustomColor>,
+    border_color: Option<CustomColor>,
 }
 
 impl Table {
@@ -178,6 +198,9 @@ impl Table {
             style,
             auto_width: true,
             page_size: None,
+            header_color: None,
+            row_color: None,
+            border_color: None,
         }
     }
 
@@ -247,21 +270,28 @@ impl Table {
 
     pub fn print_color<W: Write + WriteColor>(&mut self, writer: &mut W) -> io::Result<()> {
         self.calculate_column_widths();
+        let mut color_spec = ColorSpec::new();
+
+        if let Some(border_color) = self.border_color {
+            color_spec.set_fg(Some(border_color.to_color()));
+            writer.set_color(&color_spec)?;
+        }
+
         match self.style {
-            TableStyle::Simple => self.print_simple(writer),
-            TableStyle::Grid => self.print_styled(writer, &STYLES[1]),
-            TableStyle::FancyGrid => self.print_styled(writer, &STYLES[2]),
-            TableStyle::Clean => self.print_styled(writer, &STYLES[3]),
-            TableStyle::Round => self.print_styled(writer, &STYLES[4]),
-            TableStyle::Banner => self.print_styled(writer, &STYLES[5]),
-            TableStyle::Block => self.print_styled(writer, &STYLES[6]),
+            TableStyle::Simple => self.print_simple_color(writer, &mut color_spec),
+            TableStyle::Grid => self.print_styled_color(writer, &STYLES[1], &mut color_spec),
+            TableStyle::FancyGrid => self.print_styled_color(writer, &STYLES[2], &mut color_spec),
+            TableStyle::Clean => self.print_styled_color(writer, &STYLES[3], &mut color_spec),
+            TableStyle::Round => self.print_styled_color(writer, &STYLES[4], &mut color_spec),
+            TableStyle::Banner => self.print_styled_color(writer, &STYLES[5], &mut color_spec),
+            TableStyle::Block => self.print_styled_color(writer, &STYLES[6], &mut color_spec),
             TableStyle::Amiga => self.print_amiga_color(writer),
-            TableStyle::Minimal => self.print_styled(writer, &STYLES[7]),
-            TableStyle::Compact => self.print_styled(writer, &STYLES[8]),
-            TableStyle::Markdown => self.print_styled(writer, &STYLES[9]),
-            TableStyle::Dotted => self.print_styled(writer, &STYLES[10]),
-            TableStyle::Heavy => self.print_styled(writer, &STYLES[11]),
-            TableStyle::Neon => self.print_styled(writer, &STYLES[12]),
+            TableStyle::Minimal => self.print_styled_color(writer, &STYLES[7], &mut color_spec),
+            TableStyle::Compact => self.print_styled_color(writer, &STYLES[8], &mut color_spec),
+            TableStyle::Markdown => self.print_styled_color(writer, &STYLES[9], &mut color_spec),
+            TableStyle::Dotted => self.print_styled_color(writer, &STYLES[10], &mut color_spec),
+            TableStyle::Heavy => self.print_styled_color(writer, &STYLES[11], &mut color_spec),
+            TableStyle::Neon => self.print_styled_color(writer, &STYLES[12], &mut color_spec),
         }
     }
 
@@ -451,5 +481,95 @@ impl Table {
                 column.width = Some(max_width + 2);
             }
         }
+    }
+
+    pub fn set_header_color(&mut self, color: CustomColor) {
+        self.header_color = Some(color);
+    }
+
+    pub fn set_row_color(&mut self, color: CustomColor) {
+        self.row_color = Some(color);
+    }
+
+    pub fn set_border_color(&mut self, color: CustomColor) {
+        self.border_color = Some(color);
+    }
+
+    fn print_simple_color<W: Write + WriteColor>(
+        &self,
+        writer: &mut W,
+        color_spec: &mut ColorSpec,
+    ) -> io::Result<()> {
+        if let Some(header_color) = self.header_color {
+            color_spec.set_fg(Some(header_color.to_color()));
+            writer.set_color(color_spec)?;
+        }
+        self.print_headers(writer)?;
+
+        if let Some(row_color) = self.row_color {
+            color_spec.set_fg(Some(row_color.to_color()));
+            writer.set_color(color_spec)?;
+        }
+        for row in &self.rows {
+            self.print_row(writer, row)?;
+        }
+
+        writer.reset()?;
+        Ok(())
+    }
+
+    fn print_styled_color<W: Write + WriteColor>(
+        &self,
+        writer: &mut W,
+        style: &TableStyleConfig,
+        color_spec: &mut ColorSpec,
+    ) -> io::Result<()> {
+        self.print_line_color(writer, &style.top, color_spec)?;
+
+        if let Some(header_color) = self.header_color {
+            color_spec.set_fg(Some(header_color.to_color()));
+            writer.set_color(color_spec)?;
+        }
+        self.print_row_styled(
+            writer,
+            &self.columns.iter().map(|c| &c.header).collect::<Vec<_>>(),
+            &style.row,
+        )?;
+
+        if let Some(border_color) = self.border_color {
+            color_spec.set_fg(Some(border_color.to_color()));
+            writer.set_color(color_spec)?;
+        }
+        self.print_line_color(writer, &style.below_header, color_spec)?;
+
+        if let Some(row_color) = self.row_color {
+            color_spec.set_fg(Some(row_color.to_color()));
+            writer.set_color(color_spec)?;
+        }
+        for row in &self.rows {
+            self.print_row_styled(writer, row, &style.row)?;
+        }
+
+        if let Some(border_color) = self.border_color {
+            color_spec.set_fg(Some(border_color.to_color()));
+            writer.set_color(color_spec)?;
+        }
+        self.print_line_color(writer, &style.bottom, color_spec)?;
+
+        writer.reset()?;
+        Ok(())
+    }
+
+    fn print_line_color<W: Write + WriteColor>(
+        &self,
+        writer: &mut W,
+        style: &LineStyle,
+        color_spec: &mut ColorSpec,
+    ) -> io::Result<()> {
+        if let Some(border_color) = self.border_color {
+            color_spec.set_fg(Some(border_color.to_color()));
+            writer.set_color(color_spec)?;
+        }
+        self.print_line(writer, style)
     }
 }
