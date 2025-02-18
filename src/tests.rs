@@ -105,3 +105,39 @@ fn test_filter_rows() {
     assert_eq!(filtered.rows.len(), 1);
     assert_eq!(filtered.rows[0][1].content, "30");
 }
+
+#[test]
+fn test_cell_style_default() {
+    let style = CellStyle::new();
+    assert!(!style.bold);
+    assert!(!style.italic);
+    assert!(!style.underline);
+    assert_eq!(style.padding, 1);
+}
+
+#[test]
+fn test_cell_padding() {
+    let mut table = Table::new(TableStyle::Simple);
+    table.add_column("Test", 10, Alignment::Left);
+    let mut cell = Cell::new("Value");
+    cell.style.padding = 2;
+    table.add_row(vec![cell]);
+    let mut buffer = termcolor::Buffer::ansi();
+    table.print_to_writer(&mut buffer).unwrap();
+    let result = String::from_utf8(buffer.into_inner()).unwrap();
+    assert!(result.contains("  Value  "));
+}
+
+#[test]
+fn test_number_formatting() {
+    let mut table = Table::new(TableStyle::Simple);
+    table.add_column("Number", 15, Alignment::Right);
+    let mut cell = Cell::new("1234567.8910");
+    cell.style.decimal_places = Some(2);
+    cell.style.thousand_separator = true;
+    table.add_row(vec![cell]);
+    let mut buffer = termcolor::Buffer::ansi();
+    table.print_to_writer(&mut buffer).unwrap();
+    let result = String::from_utf8(buffer.into_inner()).unwrap();
+    assert!(result.contains("1,234,567.89"));
+}

@@ -9,6 +9,7 @@ mod styles;
 use std::io::{self, Write};
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 use styles::STYLES;
+use std::fmt::{self, Display, Formatter};
 
 #[cfg(test)]
 mod tests;
@@ -114,6 +115,12 @@ pub struct CellStyle {
     pub italic: bool,
     /// Whether the text is underlined.
     pub underline: bool,
+    /// The padding of the cell.
+    pub padding: usize,
+    /// The number of decimal places for number formatting.
+    pub decimal_places: Option<usize>,
+    /// Whether to use thousand separators for number formatting.
+    pub thousand_separator: bool,
 }
 
 impl CellStyle {
@@ -123,6 +130,9 @@ impl CellStyle {
             bold: false,
             italic: false,
             underline: false,
+            padding: 1,
+            decimal_places: None,
+            thousand_separator: false,
         }
     }
 }
@@ -148,6 +158,36 @@ impl Cell {
     /// Splits the cell content into lines.
     fn lines(&self) -> Vec<&str> {
         self.content.lines().collect()
+    }
+
+    /// Formats the cell content based on the style.
+    fn formatted_content(&self) -> String {
+        if let Ok(number) = self.content.parse::<f64>() {
+            let mut formatted = if let Some(decimal_places) = self.style.decimal_places {
+                format!("{:.1$}", number, decimal_places)
+            } else {
+                number.to_string()
+            };
+            if self.style.thousand_separator {
+                let parts: Vec<&str> = formatted.split('.').collect();
+                let mut integer_part = parts[0].to_string();
+                let mut chars: Vec<char> = integer_part.chars().collect();
+                let mut i = chars.len() as isize - 3;
+                while i > 0 {
+                    chars.insert(i as usize, ',');
+                    i -= 3;
+                }
+                integer_part = chars.into_iter().collect();
+                formatted = if parts.len() > 1 {
+                    format!("{}.{}", integer_part, parts[1])
+                } else {
+                    integer_part
+                };
+            }
+            formatted
+        } else {
+            self.content.clone()
+        }
     }
 }
 
@@ -307,10 +347,12 @@ impl Table {
                     spec.set_underline(true);
                 }
                 writer.set_color(&spec)?;
+                let padding = " ".repeat(cell.style.padding);
+                let formatted_line = cell.formatted_content();
                 match column.alignment {
-                    Alignment::Left => write!(writer, "{:<width$}", line, width = column.width - 1)?,
-                    Alignment::Center => write!(writer, "{:^width$}", line, width = column.width - 1)?,
-                    Alignment::Right => write!(writer, "{:>width$}", line, width = column.width - 1)?,
+                    Alignment::Left => write!(writer, "{}{:width$}{}", padding, formatted_line, padding, width = column.width - 1)?,
+                    Alignment::Center => write!(writer, "{}{:^width$}{}", padding, formatted_line, padding, width = column.width - 1)?,
+                    Alignment::Right => write!(writer, "{}{:>width$}{}", padding, formatted_line, padding, width = column.width - 1)?,
                 }
                 writer.reset()?;
                 write!(writer, " ")?;
@@ -357,10 +399,12 @@ impl Table {
                     spec.set_underline(true);
                 }
                 writer.set_color(&spec)?;
+                let padding = " ".repeat(cell.style.padding);
+                let formatted_line = cell.formatted_content();
                 match column.alignment {
-                    Alignment::Left => write!(writer, " {:<width$} ", line, width = column.width)?,
-                    Alignment::Center => write!(writer, " {:^width$} ", line, width = column.width)?,
-                    Alignment::Right => write!(writer, " {:>width$} ", line, width = column.width)?,
+                    Alignment::Left => write!(writer, " {}{:width$}{} ", padding, formatted_line, padding, width = column.width)?,
+                    Alignment::Center => write!(writer, " {}{:^width$}{} ", padding, formatted_line, padding, width = column.width)?,
+                    Alignment::Right => write!(writer, " {}{:>width$}{} ", padding, formatted_line, padding, width = column.width)?,
                 }
                 writer.reset()?;
             }
