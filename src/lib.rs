@@ -144,6 +144,11 @@ impl Cell {
             style: CellStyle::new(),
         }
     }
+
+    /// Splits the cell content into lines.
+    fn lines(&self) -> Vec<&str> {
+        self.content.lines().collect()
+    }
 }
 
 /// Represents a table with columns and rows.
@@ -286,27 +291,33 @@ impl Table {
     }
 
     fn print_row(&self, writer: &mut dyn WriteColor, row: &[Cell]) -> io::Result<()> {
-        for (column, cell) in self.columns.iter().zip(row.iter()) {
-            let mut spec = ColorSpec::new();
-            if cell.style.bold {
-                spec.set_bold(true);
+        let max_lines = row.iter().map(|cell| cell.lines().len()).max().unwrap_or(1);
+        for line_index in 0..max_lines {
+            for (column, cell) in self.columns.iter().zip(row.iter()) {
+                let lines = cell.lines();
+                let line = lines.get(line_index).unwrap_or(&"");
+                let mut spec = ColorSpec::new();
+                if cell.style.bold {
+                    spec.set_bold(true);
+                }
+                if cell.style.italic {
+                    spec.set_italic(true);
+                }
+                if cell.style.underline {
+                    spec.set_underline(true);
+                }
+                writer.set_color(&spec)?;
+                match column.alignment {
+                    Alignment::Left => write!(writer, "{:<width$}", line, width = column.width - 1)?,
+                    Alignment::Center => write!(writer, "{:^width$}", line, width = column.width - 1)?,
+                    Alignment::Right => write!(writer, "{:>width$}", line, width = column.width - 1)?,
+                }
+                writer.reset()?;
+                write!(writer, " ")?;
             }
-            if cell.style.italic {
-                spec.set_italic(true);
-            }
-            if cell.style.underline {
-                spec.set_underline(true);
-            }
-            writer.set_color(&spec)?;
-            match column.alignment {
-                Alignment::Left => write!(writer, "{:<width$}", cell.content, width = column.width - 1)?,
-                Alignment::Center => write!(writer, "{:^width$}", cell.content, width = column.width - 1)?,
-                Alignment::Right => write!(writer, "{:>width$}", cell.content, width = column.width - 1)?,
-            }
-            writer.reset()?;
-            write!(writer, " ")?;
+            writeln!(writer)?;
         }
-        writeln!(writer)
+        Ok(())
     }
 
     fn print_line(&self, writer: &mut dyn WriteColor, style: &LineStyle) -> io::Result<()> {
@@ -326,30 +337,36 @@ impl Table {
         row: &[Cell],
         style: &LineStyle,
     ) -> io::Result<()> {
-        write!(writer, "{}", style.begin)?;
-        for (i, (cell, column)) in row.iter().zip(self.columns.iter()).enumerate() {
-            if i > 0 {
-                write!(writer, "{}", style.sep)?;
+        let max_lines = row.iter().map(|cell| cell.lines().len()).max().unwrap_or(1);
+        for line_index in 0..max_lines {
+            write!(writer, "{}", style.begin)?;
+            for (i, (cell, column)) in row.iter().zip(self.columns.iter()).enumerate() {
+                if i > 0 {
+                    write!(writer, "{}", style.sep)?;
+                }
+                let lines = cell.lines();
+                let line = lines.get(line_index).unwrap_or(&"");
+                let mut spec = ColorSpec::new();
+                if cell.style.bold {
+                    spec.set_bold(true);
+                }
+                if cell.style.italic {
+                    spec.set_italic(true);
+                }
+                if cell.style.underline {
+                    spec.set_underline(true);
+                }
+                writer.set_color(&spec)?;
+                match column.alignment {
+                    Alignment::Left => write!(writer, " {:<width$} ", line, width = column.width)?,
+                    Alignment::Center => write!(writer, " {:^width$} ", line, width = column.width)?,
+                    Alignment::Right => write!(writer, " {:>width$} ", line, width = column.width)?,
+                }
+                writer.reset()?;
             }
-            let mut spec = ColorSpec::new();
-            if cell.style.bold {
-                spec.set_bold(true);
-            }
-            if cell.style.italic {
-                spec.set_italic(true);
-            }
-            if cell.style.underline {
-                spec.set_underline(true);
-            }
-            writer.set_color(&spec)?;
-            match column.alignment {
-                Alignment::Left => write!(writer, " {:<width$} ", cell.content, width = column.width)?,
-                Alignment::Center => write!(writer, " {:^width$} ", cell.content, width = column.width)?,
-                Alignment::Right => write!(writer, " {:>width$} ", cell.content, width = column.width)?,
-            }
-            writer.reset()?;
+            writeln!(writer, "{}", style.end)?;
         }
-        writeln!(writer, "{}", style.end)
+        Ok(())
     }
 
     fn print_simple(&self, writer: &mut dyn WriteColor) -> io::Result<()> {
