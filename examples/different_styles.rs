@@ -21,10 +21,12 @@ fn main() {
         println!("{:?} style:", style);
         let mut table = Table::new(*style);
 
+        // Add columns to the table
         table.add_column("Name", 10, Alignment::Left);
         table.add_column("Age", 5, Alignment::Right);
         table.add_column("City", 15, Alignment::Center);
 
+        // Add rows to the table
         table.add_row(vec![
             Cell::new("Alice"),
             Cell::new("30"),
@@ -36,6 +38,7 @@ fn main() {
             Cell::new("Los Angeles"),
         ]);
 
+        // Print the table
         table.print().unwrap();
         println!("\n");
     }
