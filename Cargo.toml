@@ -26,6 +26,10 @@ path = "examples/different_styles.rs"
 name = "custom_data"
 path = "examples/custom_data.rs"
 
+[[example]]
+name = "group_by_subtotals"
+path = "examples/group_by_subtotals.rs"
+
 [dependencies]
 csv = "1.3.0"
 termcolor = "1.4.1"

@@ -141,3 +141,21 @@ fn test_number_formatting() {
     let result = String::from_utf8(buffer.into_inner()).unwrap();
     assert!(result.contains("1,234,567.89"));
 }
+
+#[test]
+fn test_group_by_column_with_subtotals() {
+    let mut table = Table::new(TableStyle::Simple);
+    table.add_column("Category", 10, Alignment::Left);
+    table.add_column("Amount", 10, Alignment::Right);
+    table.add_row(vec![Cell::new("A"), Cell::new("100")]);
+    table.add_row(vec![Cell::new("A"), Cell::new("200")]);
+    table.add_row(vec![Cell::new("B"), Cell::new("300")]);
+    table.add_row(vec![Cell::new("B"), Cell::new("400")]);
+    table.group_by_column_with_subtotals(0);
+    let mut buffer = termcolor::Buffer::ansi();
+    table.print_to_writer(&mut buffer).unwrap();
+    let result = String::from_utf8(buffer.into_inner()).unwrap();
+    assert!(result.contains("Subtotal"));
+    assert!(result.contains("300"));
+    assert!(result.contains("700"));
+}

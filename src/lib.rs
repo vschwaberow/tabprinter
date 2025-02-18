@@ -293,6 +293,52 @@ impl Table {
         }
     }
 
+    /// Groups rows by the specified column index and adds subtotals.
+    pub fn group_by_column_with_subtotals(&mut self, column_index: usize) {
+        let mut grouped_rows: Vec<Vec<Cell>> = Vec::new();
+        let mut current_group: Vec<Vec<Cell>> = Vec::new();
+        let mut current_value: Option<String> = None;
+
+        for row in &self.rows {
+            let value = &row[column_index].content;
+            if current_value.is_none() || current_value.as_ref().unwrap() != value {
+                if !current_group.is_empty() {
+                    let subtotal_row = self.calculate_subtotal(&current_group);
+                    grouped_rows.push(subtotal_row);
+                }
+                current_value = Some(value.clone());
+                grouped_rows.push(row.clone());
+                current_group = Vec::new();
+            } else {
+                grouped_rows.push(row.clone());
+            }
+            current_group.push(row.clone());
+        }
+
+        if !current_group.is_empty() {
+            let subtotal_row = self.calculate_subtotal(&current_group);
+            grouped_rows.push(subtotal_row);
+        }
+
+        self.rows = grouped_rows;
+    }
+
+    /// Calculates the subtotal for a group of rows.
+    fn calculate_subtotal(&self, group: &[Vec<Cell>]) -> Vec<Cell> {
+        let mut subtotal_row: Vec<Cell> = Vec::new();
+        for (i, column) in self.columns.iter().enumerate() {
+            if i == 0 {
+                subtotal_row.push(Cell::new("Subtotal"));
+            } else if group.iter().all(|row| row[i].content.parse::<f64>().is_ok()) {
+                let subtotal: f64 = group.iter().map(|row| row[i].content.parse::<f64>().unwrap()).sum();
+                subtotal_row.push(Cell::new(&subtotal.to_string()));
+            } else {
+                subtotal_row.push(Cell::new(""));
+            }
+        }
+        subtotal_row
+    }
+
     /// Prints the table to the specified writer.
     pub fn print_to_writer(&self, writer: &mut dyn WriteColor) -> io::Result<()> {
         if let Some(style_cfg) = self.style.config() {
