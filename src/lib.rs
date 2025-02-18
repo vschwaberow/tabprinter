@@ -316,6 +316,7 @@ impl Table {
         }
     }
 
+    /// Prints headers of the table.
     fn print_headers(&self, writer: &mut dyn WriteColor) -> io::Result<()> {
         for (i, column) in self.columns.iter().enumerate() {
             match column.alignment {
@@ -330,6 +331,7 @@ impl Table {
         writeln!(writer)
     }
 
+    /// Prints a row of the table.
     fn print_row(&self, writer: &mut dyn WriteColor, row: &[Cell]) -> io::Result<()> {
         let max_lines = row.iter().map(|cell| cell.lines().len()).max().unwrap_or(1);
         for line_index in 0..max_lines {
@@ -362,6 +364,7 @@ impl Table {
         Ok(())
     }
 
+    /// Prints a line of the table.
     fn print_line(&self, writer: &mut dyn WriteColor, style: &LineStyle) -> io::Result<()> {
         write!(writer, "{}", style.begin)?;
         for (i, column) in self.columns.iter().enumerate() {
@@ -373,6 +376,7 @@ impl Table {
         writeln!(writer, "{}", style.end)
     }
 
+    /// Prints a row of the table with a specific style.
     fn print_row_styled(
         &self,
         writer: &mut dyn WriteColor,
@@ -413,6 +417,7 @@ impl Table {
         Ok(())
     }
 
+    /// Prints the table to the specified writer with simple style.
     fn print_simple(&self, writer: &mut dyn WriteColor) -> io::Result<()> {
         self.print_headers(writer)?;
         for row in &self.rows {
@@ -421,6 +426,7 @@ impl Table {
         Ok(())
     }
 
+    /// Prints the table to the specified writer with styled style.
     fn print_styled(&self, writer: &mut dyn WriteColor, style: &TableStyleConfig) -> io::Result<()> {
         self.print_line(writer, &style.top)?;
         self.print_row_styled(
@@ -435,6 +441,7 @@ impl Table {
         self.print_line(writer, &style.bottom)
     }
 
+    /// Prints the table to the standard output with simple style.
     fn print_amiga_color<W: Write + WriteColor>(&self, writer: &mut W) -> io::Result<()> {
         let mut spec = ColorSpec::new();
         spec.set_fg(Some(Color::Blue));
