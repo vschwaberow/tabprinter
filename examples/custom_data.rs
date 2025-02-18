@@ -1,4 +1,4 @@
-use tabprinter::{Alignment, Table, TableStyle};
+use tabprinter::{Alignment, Table, TableStyle, Cell};
 
 struct Person {
     name: String,
@@ -32,7 +32,11 @@ fn main() {
     table.add_column("City", 15, Alignment::Center);
 
     for person in people {
-        table.add_row(vec![person.name, person.age.to_string(), person.city]);
+        table.add_row(vec![
+            Cell::new(&person.name),
+            Cell::new(&person.age.to_string()),
+            Cell::new(&person.city),
+        ]);
     }
 
     table.print().unwrap();

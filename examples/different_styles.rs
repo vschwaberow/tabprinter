@@ -1,4 +1,4 @@
-use tabprinter::{Alignment, Table, TableStyle};
+use tabprinter::{Alignment, Table, TableStyle, Cell};
 
 fn main() {
     let styles = [
@@ -26,14 +26,14 @@ fn main() {
         table.add_column("City", 15, Alignment::Center);
 
         table.add_row(vec![
-            "Alice".to_string(),
-            "30".to_string(),
-            "New York".to_string(),
+            Cell::new("Alice"),
+            Cell::new("30"),
+            Cell::new("New York"),
         ]);
         table.add_row(vec![
-            "Bob".to_string(),
-            "25".to_string(),
-            "Los Angeles".to_string(),
+            Cell::new("Bob"),
+            Cell::new("25"),
+            Cell::new("Los Angeles"),
         ]);
 
         table.print().unwrap();

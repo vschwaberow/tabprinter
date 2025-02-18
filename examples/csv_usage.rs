@@ -1,6 +1,6 @@
 use csv::Reader;
 use std::{error::Error, fs::File};
-use tabprinter::{Alignment, Table, TableStyle};
+use tabprinter::{Alignment, Table, TableStyle, Cell};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let file = File::open("examples/data.csv")?;
@@ -15,7 +15,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     for result in rdr.records() {
         let record = result?;
-        let row: Vec<String> = record.iter().map(String::from).collect();
+        let row: Vec<Cell> = record.iter().map(|s| Cell::new(s)).collect();
         table.add_row(row);
     }
 
