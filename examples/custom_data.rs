@@ -7,6 +7,7 @@ struct Person {
 }
 
 fn main() {
+    // Create a list of people
     let people = vec![
         Person {
             name: "Alice".to_string(),
@@ -25,12 +26,15 @@ fn main() {
         },
     ];
 
+    // Create a new table with the FancyGrid style
     let mut table = Table::new(TableStyle::FancyGrid);
 
+    // Add columns to the table
     table.add_column("Name", 10, Alignment::Left);
     table.add_column("Age", 5, Alignment::Right);
     table.add_column("City", 15, Alignment::Center);
 
+    // Add rows to the table using the list of people
     for person in people {
         table.add_row(vec![
             Cell::new(&person.name),
@@ -39,5 +43,6 @@ fn main() {
         ]);
     }
 
+    // Print the table
     table.print().unwrap();
 }
