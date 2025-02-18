@@ -9,7 +9,6 @@ mod styles;
 use std::io::{self, Write};
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 use styles::STYLES;
-use std::fmt::{self, Display, Formatter};
 
 #[cfg(test)]
 mod tests;
@@ -326,7 +325,7 @@ impl Table {
     /// Calculates the subtotal for a group of rows.
     fn calculate_subtotal(&self, group: &[Vec<Cell>]) -> Vec<Cell> {
         let mut subtotal_row: Vec<Cell> = Vec::new();
-        for (i, column) in self.columns.iter().enumerate() {
+        for (i, _column) in self.columns.iter().enumerate() {
             if i == 0 {
                 subtotal_row.push(Cell::new("Subtotal"));
             } else if group.iter().all(|row| row[i].content.parse::<f64>().is_ok()) {
@@ -383,7 +382,7 @@ impl Table {
         for line_index in 0..max_lines {
             for (column, cell) in self.columns.iter().zip(row.iter()) {
                 let lines = cell.lines();
-                let line = lines.get(line_index).unwrap_or(&"");
+                let _line = lines.get(line_index).unwrap_or(&"");
                 let mut spec = ColorSpec::new();
                 if cell.style.bold {
                     spec.set_bold(true);
@@ -437,7 +436,7 @@ impl Table {
                     write!(writer, "{}", style.sep)?;
                 }
                 let lines = cell.lines();
-                let line = lines.get(line_index).unwrap_or(&"");
+                let _line = lines.get(line_index).unwrap_or(&"");
                 let mut spec = ColorSpec::new();
                 if cell.style.bold {
                     spec.set_bold(true);
