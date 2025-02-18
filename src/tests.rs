@@ -159,3 +159,43 @@ fn test_group_by_column_with_subtotals() {
     assert!(result.contains("300"));
     assert!(result.contains("700"));
 }
+
+#[test]
+fn test_sum_column() {
+    let mut table = Table::new(TableStyle::Simple);
+    table.add_column("Amount", 10, Alignment::Right);
+    table.add_row(vec![Cell::new("100")]);
+    table.add_row(vec![Cell::new("200")]);
+    table.add_row(vec![Cell::new("300")]);
+    assert_eq!(table.sum_column(0), Some(600.0));
+}
+
+#[test]
+fn test_average_column() {
+    let mut table = Table::new(TableStyle::Simple);
+    table.add_column("Amount", 10, Alignment::Right);
+    table.add_row(vec![Cell::new("100")]);
+    table.add_row(vec![Cell::new("200")]);
+    table.add_row(vec![Cell::new("300")]);
+    assert_eq!(table.average_column(0), Some(200.0));
+}
+
+#[test]
+fn test_min_column() {
+    let mut table = Table::new(TableStyle::Simple);
+    table.add_column("Amount", 10, Alignment::Right);
+    table.add_row(vec![Cell::new("100")]);
+    table.add_row(vec![Cell::new("200")]);
+    table.add_row(vec![Cell::new("300")]);
+    assert_eq!(table.min_column(0), Some(100.0));
+}
+
+#[test]
+fn test_max_column() {
+    let mut table = Table::new(TableStyle::Simple);
+    table.add_column("Amount", 10, Alignment::Right);
+    table.add_row(vec![Cell::new("100")]);
+    table.add_row(vec![Cell::new("200")]);
+    table.add_row(vec![Cell::new("300")]);
+    assert_eq!(table.max_column(0), Some(300.0));
+}

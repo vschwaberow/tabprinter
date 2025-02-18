@@ -507,4 +507,41 @@ impl Table {
         let mut stdout = StandardStream::stdout(ColorChoice::Always);
         self.print_color(&mut stdout)
     }
+
+    /// Aggregates the specified column using the provided aggregation function.
+    pub fn aggregate_column<F>(&self, column_index: usize, aggregation_fn: F) -> Option<f64>
+    where
+        F: Fn(Vec<f64>) -> f64,
+    {
+        let values: Vec<f64> = self
+            .rows
+            .iter()
+            .filter_map(|row| row[column_index].content.parse::<f64>().ok())
+            .collect();
+        if values.is_empty() {
+            None
+        } else {
+            Some(aggregation_fn(values))
+        }
+    }
+
+    /// Calculates the sum of the specified column.
+    pub fn sum_column(&self, column_index: usize) -> Option<f64> {
+        self.aggregate_column(column_index, |values| values.iter().sum())
+    }
+
+    /// Calculates the average of the specified column.
+    pub fn average_column(&self, column_index: usize) -> Option<f64> {
+        self.aggregate_column(column_index, |values| values.iter().sum::<f64>() / values.len() as f64)
+    }
+
+    /// Finds the minimum value in the specified column.
+    pub fn min_column(&self, column_index: usize) -> Option<f64> {
+        self.aggregate_column(column_index, |values| *values.iter().min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap())
+    }
+
+    /// Finds the maximum value in the specified column.
+    pub fn max_column(&self, column_index: usize) -> Option<f64> {
+        self.aggregate_column(column_index, |values| *values.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap())
+    }
 }

@@ -30,6 +30,10 @@ path = "examples/custom_data.rs"
 name = "group_by_subtotals"
 path = "examples/group_by_subtotals.rs"
 
+[[example]]
+name = "column_aggregations"
+path = "examples/column_aggregations.rs"
+
 [dependencies]
 csv = "1.3.0"
 termcolor = "1.4.1"
