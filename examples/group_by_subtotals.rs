@@ -5,8 +5,8 @@ fn main() {
     let mut table = Table::new(TableStyle::Simple);
 
     // Add columns to the table
-    table.add_column("Category", 10, Alignment::Left);
-    table.add_column("Amount", 10, Alignment::Right);
+    table.add_column("Category", Alignment::Left);
+    table.add_column("Amount", Alignment::Right);
 
     // Add rows to the table
     table.add_row(vec![Cell::new("A"), Cell::new("100")]);

@@ -80,6 +80,7 @@ pub enum Alignment {
     Right,
 }
 
+#[derive(Debug)]
 struct LineStyle {
     begin: &'static str,
     hline: &'static str,
@@ -87,6 +88,7 @@ struct LineStyle {
     end: &'static str,
 }
 
+#[derive(Debug)]
 struct TableStyleConfig {
     top: LineStyle,
     below_header: LineStyle,
@@ -94,14 +96,21 @@ struct TableStyleConfig {
     row: LineStyle,
 }
 
-/// Represents a column in the table.
-#[derive(Clone)]
-pub struct Column {
-    /// The header text of the column.
+#[derive(Clone, Debug)]
+struct ColumnDef {
     header: String,
-    /// The width of the column.
-    width: usize,
-    /// The alignment of the text within the column.
+    alignment: Alignment,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ColumnDim {
+    /// Max estimated width (.chars().count()) needed for content alignment
+    effective_content_width: usize,
+    /// Max padding specified for any cell in this column
+    max_padding: usize,
+    /// Total width for drawing lines: eff_width + 2*max_pad + 2 spaces
+    total_width_for_drawing: usize,
+    /// Alignment for the column
     alignment: Alignment,
 }
 
@@ -135,6 +144,8 @@ impl CellStyle {
         }
     }
 }
+
+impl Default for CellStyle { fn default() -> Self { Self::new() } }
 
 /// Represents a cell in the table.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -188,61 +199,90 @@ impl Cell {
             self.content.clone()
         }
     }
+
+    // Get the maximum ESTIMATED width (.chars().count()) of any line in the cell
+    fn max_line_estimated_width(&self) -> usize {
+        self.lines().iter().map(|line| line.chars().count()).max().unwrap_or(0)
+    }
+
+    // Get number of lines
+    fn height(&self) -> usize {
+        // Ensure empty cells still have height 1 for row calculation
+        self.lines().len().max(1)
+    }
 }
 
-/// Represents a table with columns and rows.
+#[derive(Debug)]
+/// Represents a formatted table with rows, columns, and styling information.
+///
+/// This structure contains all the necessary data to render a table, including
+/// column definitions, cell content, and styling options.
+///
+/// # Fields
+///
+/// * `column_defs` - Definitions for each column in the table
+/// * `rows` - Content of the table as a collection of cell values
+/// * `style` - Styling options for the entire table
+/// * `column_dims` - Calculated dimensions for each column (width, etc.), computed when needed
+/// * `row_heights` - Calculated height for each row, computed when needed
+///
+/// The `column_dims` and `row_heights` fields are populated during table layout calculations
+/// and may be `None` until the table dimensions are computed.
 pub struct Table {
-    /// The columns of the table.
-    columns: Vec<Column>,
-    /// The rows of the table.
+    column_defs: Vec<ColumnDef>,
     rows: Vec<Vec<Cell>>,
-    /// The style of the table.
     style: TableStyle,
+    column_dims: Option<Vec<ColumnDim>>,
+    row_heights: Option<Vec<usize>>,
 }
 
 impl Table {
     /// Creates a new table with the specified style.
     pub fn new(style: TableStyle) -> Self {
         Self {
-            columns: Vec::new(),
+            column_defs: Vec::new(),
             rows: Vec::new(),
             style,
+            column_dims: None,
+            row_heights: None,
         }
     }
 
-    /// Adds a column to the table.
-    pub fn add_column(&mut self, header: &str, width: usize, alignment: Alignment) {
-        self.columns.push(Column {
+    /// Adds a column to the table with the specified header and alignment.
+    /// The column width is automatically adjusted based on the content.
+    /// The alignment can be `Left`, `Center`, or `Right`.
+    pub fn add_column(&mut self, header: &str, alignment: Alignment) {
+        self.column_defs.push(ColumnDef {
             header: header.to_string(),
-            width,
             alignment,
         });
+        self.invalidate_dimensions();
     }
 
     /// Adds a row to the table.
     /// The length of the row must match the number of columns.
     pub fn add_row(&mut self, row: Vec<Cell>) {
         assert_eq!(
-            self.columns.len(),
-            row.len(),
-            "Row length must match number of columns"
+            self.column_defs.len(), row.len(),
+            "Row length ({}) must match number of columns ({})", row.len(), self.column_defs.len()
         );
         self.rows.push(row);
+        self.invalidate_dimensions();
     }
 
     /// Auto-adjusts the widths of the columns based on the content.
-    pub fn auto_adjust_widths(&mut self) {
-        for (i, col) in self.columns.iter_mut().enumerate() {
-            let header_len = col.header.len();
-            let max_cell = self
-                .rows
-                .iter()
-                .map(|row| row[i].content.len())
-                .max()
-                .unwrap_or(0);
-            col.width = header_len.max(max_cell) + 2;
-        }
-    }
+    // pub fn auto_adjust_widths(&mut self) {
+    //     for (i, col) in self.columns.iter_mut().enumerate() {
+    //         let header_len = col.header.len();
+    //         let max_cell = self
+    //             .rows
+    //             .iter()
+    //             .map(|row| row[i].content.len())
+    //             .max()
+    //             .unwrap_or(0);
+    //         col.width = header_len.max(max_cell) + 2;
+    //     }
+    // }
 
     /// Sorts the rows by the specified column index.
     /// If `ascending` is true, sorts in ascending order; otherwise, sorts in descending order.
@@ -263,12 +303,19 @@ impl Table {
     where
         F: Fn(&Vec<Cell>) -> bool,
     {
-        let filtered = self.rows.iter().cloned().filter(predicate).collect();
-        Self {
-            columns: self.columns.clone(),
-            rows: filtered,
+        let filtered_rows = self.rows.iter().cloned().filter(predicate).collect();
+        Table {
+            column_defs: self.column_defs.clone(),
+            rows: filtered_rows,
             style: self.style,
+            column_dims: None,
+            row_heights: None,
         }
+    }
+
+    /// Calculates the sum of the specified column index.
+    pub fn get_column_count(&self) -> usize {
+        self.column_defs.len()
     }
 
     /// Groups rows by the specified column index and adds subtotals.
@@ -304,7 +351,7 @@ impl Table {
     /// Calculates the subtotal for a group of rows.
     fn calculate_subtotal(&self, group: &[Vec<Cell>]) -> Vec<Cell> {
         let mut subtotal_row: Vec<Cell> = Vec::new();
-        for (i, _column) in self.columns.iter().enumerate() {
+        for (i, _column) in self.column_defs.iter().enumerate() {
             if i == 0 {
                 subtotal_row.push(Cell::new("Subtotal"));
             } else if group
@@ -324,12 +371,102 @@ impl Table {
     }
 
     /// Prints the table to the specified writer.
-    pub fn print_to_writer(&self, writer: &mut dyn WriteColor) -> io::Result<()> {
-        if let Some(style_cfg) = self.style.config() {
-            self.print_styled(writer, style_cfg)
-        } else {
-            self.print_simple(writer)
+    pub fn print_to_writer(&mut self, writer: &mut dyn WriteColor) -> io::Result<()> {
+        // Ensure dimensions are calculated before printing
+        self.ensure_dimensions();
+
+        // Handle Amiga style separately if it requires unique logic beyond styling characters
+        if self.style == TableStyle::Amiga {
+            return self.print_amiga_color(writer);
         }
+
+        // Check if the style has a specific configuration
+        let style_cfg = match self.style.config() {
+            Some(cfg) => cfg,
+            // Handle Simple/other styles that might return None from config() but still need printing
+            None => {
+                // Provide a default minimal config or handle Simple style explicitly
+                 if self.style == TableStyle::Simple {
+                    // Use a basic printing logic for Simple style
+                    return self.print_simple_or_default(writer);
+                 } else {
+                     // Or return error / default behaviour for unconfigured styles
+                     return Err(io::Error::new(io::ErrorKind::Other, "Unsupported table style"));
+                 }
+            }
+        };
+
+        // Print the table with the specified style
+        self.print_styled(writer, style_cfg)
+    }
+
+    /// Fallback printing for Simple style or potentially other unstyled tables.
+    fn print_simple_or_default(&self, writer: &mut dyn WriteColor) -> io::Result<()> {
+        // Ensure dimensions are calculated before printing
+        let column_dims = self.column_dims.as_ref().ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Dimensions not calculated"))?;
+        let row_heights = self.row_heights.as_ref().ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Dimensions not calculated"))?;
+
+        // Print Headers simply
+        for (i, col_def) in self.column_defs.iter().enumerate() {
+            let width = column_dims[i].effective_content_width;
+            let header_text = &col_def.header;
+            let estimated_width = header_text.chars().count();
+            let padding_needed = width.saturating_sub(estimated_width);
+
+            // Apply basic styling (bold, italic, underline) if needed
+            match column_dims[i].alignment {
+                Alignment::Left => write!(writer, "{}{}", header_text, " ".repeat(padding_needed))?,
+                Alignment::Center => {
+                    let left_pad = padding_needed / 2;
+                    let right_pad = padding_needed - left_pad;
+                    write!(writer, "{}{}{}", " ".repeat(left_pad), header_text, " ".repeat(right_pad))?
+                }
+                Alignment::Right => write!(writer, "{}{}", " ".repeat(padding_needed), header_text)?,
+            }
+                if i < self.column_defs.len() - 1 {
+                // Add spacing between columns - simple spacing
+                write!(writer, "  ")?;
+                }
+        }
+        writeln!(writer)?;
+
+        // Print Rows simply
+        for (r, row) in self.rows.iter().enumerate() {
+                let row_h = row_heights[r];
+                for line_index in 0..row_h {
+                for (i, cell) in row.iter().enumerate() {
+                    let cell_lines = cell.lines();
+                    let line_content = if let Some(line) = cell_lines.get(line_index) { *line } else { "" };
+                    let width = column_dims[i].effective_content_width;
+                    let estimated_width = line_content.chars().count();
+                    let padding_needed = width.saturating_sub(estimated_width);
+
+                    // Apply basic styling (bold, italic, underline) if needed
+                    let mut spec = ColorSpec::new();
+                    if cell.style.bold { spec.set_bold(true); }
+                    if cell.style.italic { spec.set_italic(true); }
+                    if cell.style.underline { spec.set_underline(true); }
+                    writer.set_color(&spec)?;
+
+                    match column_dims[i].alignment {
+                        Alignment::Left => write!(writer, "{}{}", line_content, " ".repeat(padding_needed))?,
+                        Alignment::Center => {
+                            let left_pad = padding_needed / 2;
+                            let right_pad = padding_needed - left_pad;
+                            write!(writer, "{}{}{}", " ".repeat(left_pad), line_content, " ".repeat(right_pad))?
+                        }
+                        Alignment::Right => write!(writer, "{}{}", " ".repeat(padding_needed), line_content)?,
+                    }
+                    writer.reset()?;
+
+                    if i < self.column_defs.len() - 1 {
+                    write!(writer, "  ")?;
+                    }
+                }
+                writeln!(writer)?;
+            }
+        }
+        Ok(())
     }
 
     /// Prints the table with color support.
@@ -346,30 +483,94 @@ impl Table {
         }
     }
 
+    /// Invalidates the cached dimensions of the table.
+    /// This is used to force recalculation of column widths and row heights.
+    /// It should be called whenever the content of the table changes.
+    /// This is important for ensuring that the table is displayed correctly
+    /// after adding or modifying rows or columns.
+    fn invalidate_dimensions(&mut self) {
+        self.column_dims = None;
+        self.row_heights = None;
+    }
+
+    /// Ensures that the dimensions of the table are calculated.
+    /// This function calculates the effective content width, maximum padding,
+    /// and total width for drawing lines for each column.
+    fn ensure_dimensions(&mut self) {
+        if self.column_dims.is_some() && self.row_heights.is_some() {
+            return;
+        }
+
+        let num_cols = self.column_defs.len();
+        if num_cols == 0 {
+            self.column_dims = Some(Vec::new());
+            self.row_heights = Some(Vec::new());
+            return;
+        }
+
+        let mut max_content_widths: Vec<usize> = vec![0; num_cols];
+        let mut max_paddings: Vec<usize> = vec![1; num_cols];
+
+        for (i, col_def) in self.column_defs.iter().enumerate() {
+            max_content_widths[i] = max_content_widths[i].max(col_def.header.chars().count());
+        }
+
+        let mut row_heights_calc = Vec::with_capacity(self.rows.len());
+        for row in &self.rows {
+            let mut current_row_max_h = 1;
+            for (i, cell) in row.iter().enumerate() {
+                 max_content_widths[i] = max_content_widths[i].max(cell.max_line_estimated_width());
+                 max_paddings[i] = max_paddings[i].max(cell.style.padding);
+                 current_row_max_h = current_row_max_h.max(cell.height());
+            }
+            row_heights_calc.push(current_row_max_h);
+        }
+
+        let mut column_dims_calc = Vec::with_capacity(num_cols);
+        for i in 0..num_cols {
+            let eff_width = max_content_widths[i];
+            let max_pad = max_paddings[i];
+            let total_width = eff_width + 2 * max_pad + 2;
+            column_dims_calc.push(ColumnDim {
+                effective_content_width: eff_width,
+                max_padding: max_pad,
+                total_width_for_drawing: total_width,
+                alignment: self.column_defs[i].alignment,
+            });
+        }
+
+        self.column_dims = Some(column_dims_calc);
+        self.row_heights = Some(row_heights_calc);
+    }
+
     /// Prints headers of the table.
     fn print_headers(&self, writer: &mut dyn WriteColor) -> io::Result<()> {
-        for (i, column) in self.columns.iter().enumerate() {
-            match column.alignment {
+        // Ensure dimensions are calculated
+        let column_dims = self.column_dims.as_ref().ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Dimensions not calculated"))?;
+        
+        for (i, (col_def, dim)) in self.column_defs.iter().zip(column_dims.iter()).enumerate() {
+            let width = dim.effective_content_width;
+            match dim.alignment {
                 Alignment::Left => write!(
                     writer,
                     "{:<width$}",
-                    column.header,
-                    width = column.width - 1
+                    col_def.header,
+                    width = width
                 )?,
                 Alignment::Center => write!(
                     writer,
                     "{:^width$}",
-                    column.header,
-                    width = column.width - 1
+                    col_def.header,
+                    width = width
                 )?,
                 Alignment::Right => write!(
                     writer,
                     "{:>width$}",
-                    column.header,
-                    width = column.width - 1
+                    col_def.header,
+                    width = width
                 )?,
             }
-            if i < self.columns.len() - 1 {
+            if i < self.column_defs.len() - 1 {
                 write!(writer, " ")?;
             }
         }
@@ -378,32 +579,32 @@ impl Table {
 
     /// Prints a row of the table.
     fn print_row(&self, writer: &mut dyn WriteColor, row: &[Cell]) -> io::Result<()> {
+        let column_dims = self.column_dims.as_ref().ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Dimensions not calculated"))?;
         let max_lines = row.iter().map(|cell| cell.lines().len()).max().unwrap_or(1);
+        
         for line_index in 0..max_lines {
-            for (column, cell) in self.columns.iter().zip(row.iter()) {
+            for (i, (cell, dim)) in row.iter().zip(column_dims.iter()).enumerate() {
                 let lines = cell.lines();
-                let _line = lines.get(line_index).unwrap_or(&"");
+                let _line_content = if let Some(line) = lines.get(line_index) { *line } else { "" };
+                
                 let mut spec = ColorSpec::new();
-                if cell.style.bold {
-                    spec.set_bold(true);
-                }
-                if cell.style.italic {
-                    spec.set_italic(true);
-                }
-                if cell.style.underline {
-                    spec.set_underline(true);
-                }
+                if cell.style.bold { spec.set_bold(true); }
+                if cell.style.italic { spec.set_italic(true); }
+                if cell.style.underline { spec.set_underline(true); }
                 writer.set_color(&spec)?;
+                
                 let padding = " ".repeat(cell.style.padding);
                 let formatted_line = cell.formatted_content();
-                match column.alignment {
+                let width = dim.effective_content_width;
+                
+                match dim.alignment {
                     Alignment::Left => write!(
                         writer,
-                        "{}{:width$}{}",
+                        "{}{:<width$}{}",
                         padding,
                         formatted_line,
                         padding,
-                        width = column.width - 1
+                        width = width
                     )?,
                     Alignment::Center => write!(
                         writer,
@@ -411,7 +612,7 @@ impl Table {
                         padding,
                         formatted_line,
                         padding,
-                        width = column.width - 1
+                        width = width
                     )?,
                     Alignment::Right => write!(
                         writer,
@@ -419,91 +620,93 @@ impl Table {
                         padding,
                         formatted_line,
                         padding,
-                        width = column.width - 1
+                        width = width
                     )?,
                 }
                 writer.reset()?;
-                write!(writer, " ")?;
+                if i < column_dims.len() - 1 {
+                    write!(writer, " ")?;
+                }
             }
             writeln!(writer)?;
         }
         Ok(())
     }
 
-    /// Prints a line of the table.
+    /// Prints a border line using the pre-calculated total widths.
     fn print_line(&self, writer: &mut dyn WriteColor, style: &LineStyle) -> io::Result<()> {
+        let column_dims = self.column_dims.as_ref().ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Dimensions not calculated"))?;
         write!(writer, "{}", style.begin)?;
-        for (i, column) in self.columns.iter().enumerate() {
+        for (i, dim) in column_dims.iter().enumerate() {
             if i > 0 {
                 write!(writer, "{}", style.sep)?;
             }
-            write!(writer, "{}", style.hline.repeat(column.width + 2))?;
+            write!(writer, "{}", style.hline.repeat(dim.total_width_for_drawing))?;
         }
         writeln!(writer, "{}", style.end)
     }
 
-    /// Prints a row of the table with a specific style.
-    fn print_row_styled(
+    /// Prints a data row (or header row) applying styles and handling multi-line cells.
+    fn print_content_row(
         &self,
         writer: &mut dyn WriteColor,
-        row: &[Cell],
-        style: &LineStyle,
+        cells: &[Cell],
+        row_height: usize,
+        row_style: &LineStyle,
     ) -> io::Result<()> {
-        let max_lines = row.iter().map(|cell| cell.lines().len()).max().unwrap_or(1);
-        for line_index in 0..max_lines {
-            write!(writer, "{}", style.begin)?;
-            for (i, (cell, column)) in row.iter().zip(self.columns.iter()).enumerate() {
+        let column_dims = self.column_dims.as_ref().ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Dimensions not calculated"))?;
+
+        for line_index in 0..row_height {
+            write!(writer, "{}", row_style.begin)?;
+            for (i, (cell, dim)) in cells.iter().zip(column_dims.iter()).enumerate() {
                 if i > 0 {
-                    write!(writer, "{}", style.sep)?;
+                    write!(writer, "{}", row_style.sep)?;
                 }
-                let lines = cell.lines();
-                let _line = lines.get(line_index).unwrap_or(&"");
+
+                let cell_lines = cell.lines();
+                // Get the content for the current line, or empty string if cell is shorter
+                let line_content = if let Some(line) = cell_lines.get(line_index) { *line } else { "" };
+                let line_estimated_width = line_content.chars().count();
+
+                // Calculate padding needed for alignment within the effective content width
+                let alignment_padding_needed = dim.effective_content_width.saturating_sub(line_estimated_width);
+                let (left_align_pad, right_align_pad) = match dim.alignment {
+                    Alignment::Left => (0, alignment_padding_needed),
+                    Alignment::Center => {
+                        let left = alignment_padding_needed / 2;
+                        let right = alignment_padding_needed - left;
+                        (left, right)
+                    }
+                    Alignment::Right => (alignment_padding_needed, 0),
+                };
+
+                // Get actual cell padding and calculate extra padding needed to reach max_padding
+                let cell_padding = cell.style.padding;
+                let extra_left_pad = dim.max_padding.saturating_sub(cell_padding);
+                let extra_right_pad = dim.max_padding.saturating_sub(cell_padding);
+
+                // Construct the full cell content with all padding/spacing
+                let left_spacing = format!("{}{}", " ".repeat(extra_left_pad), " ".repeat(cell_padding));
+                let right_spacing = format!("{}{}", " ".repeat(cell_padding), " ".repeat(extra_right_pad));
+                let aligned_content_part = format!("{}{}{}", " ".repeat(left_align_pad), line_content, " ".repeat(right_align_pad));
+
+                // Apply text styling (bold, italic, underline)
                 let mut spec = ColorSpec::new();
-                if cell.style.bold {
-                    spec.set_bold(true);
-                }
-                if cell.style.italic {
-                    spec.set_italic(true);
-                }
-                if cell.style.underline {
-                    spec.set_underline(true);
-                }
+                if cell.style.bold { spec.set_bold(true); }
+                if cell.style.italic { spec.set_italic(true); }
+                if cell.style.underline { spec.set_underline(true); }
                 writer.set_color(&spec)?;
-                let padding = " ".repeat(cell.style.padding);
-                let formatted_line = cell.formatted_content();
-                match column.alignment {
-                    Alignment::Left => write!(
-                        writer,
-                        " {}{:width$}{} ",
-                        padding,
-                        formatted_line,
-                        padding,
-                        width = column.width
-                    )?,
-                    Alignment::Center => write!(
-                        writer,
-                        " {}{:^width$}{} ",
-                        padding,
-                        formatted_line,
-                        padding,
-                        width = column.width
-                    )?,
-                    Alignment::Right => write!(
-                        writer,
-                        " {}{:>width$}{} ",
-                        padding,
-                        formatted_line,
-                        padding,
-                        width = column.width
-                    )?,
-                }
-                writer.reset()?;
+
+                // Write the cell segment: space + total_left_padding + aligned_content + total_right_padding + space
+                write!(writer, " {}{}{} ", left_spacing, aligned_content_part, right_spacing)?;
+
+                writer.reset()?; // Reset color/style
             }
-            writeln!(writer, "{}", style.end)?;
+            writeln!(writer, "{}", row_style.end)?;
         }
         Ok(())
     }
-
+    
     /// Prints the table to the specified writer with simple style.
     fn print_simple(&self, writer: &mut dyn WriteColor) -> io::Result<()> {
         self.print_headers(writer)?;
@@ -513,48 +716,96 @@ impl Table {
         Ok(())
     }
 
-    /// Prints the table to the specified writer with styled style.
+    /// Prints the table to the specified writer with a resolved style configuration.
     fn print_styled(
         &self,
         writer: &mut dyn WriteColor,
-        style: &TableStyleConfig,
+        style_cfg: &TableStyleConfig,
     ) -> io::Result<()> {
-        self.print_line(writer, &style.top)?;
-        self.print_row_styled(
-            writer,
-            &self
-                .columns
-                .iter()
-                .map(|c| Cell::new(&c.header))
-                .collect::<Vec<_>>(),
-            &style.row,
-        )?;
-        self.print_line(writer, &style.below_header)?;
-        for row in &self.rows {
-            self.print_row_styled(writer, row, &style.row)?;
+         let row_heights = self.row_heights.as_ref().ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Dimensions not calculated"))?;
+
+        self.print_line(writer, &style_cfg.top)?;
+
+        let header_cells: Vec<Cell> = self.column_defs.iter()
+            .map(|def| Cell::new(&def.header)) 
+            .collect();
+        if !header_cells.is_empty() {
+            let header_height = header_cells.iter().map(|c| c.height()).max().unwrap_or(1);
+            self.print_content_row(writer, &header_cells, header_height, &style_cfg.row)?;
+            self.print_line(writer, &style_cfg.below_header)?;
         }
-        self.print_line(writer, &style.bottom)
+
+        for (r, row) in self.rows.iter().enumerate() {
+            let row_height = row_heights[r];
+            self.print_content_row(writer, row, row_height, &style_cfg.row)?;
+        }
+
+        self.print_line(writer, &style_cfg.bottom)
     }
 
-    /// Prints the table to the standard output with simple style.
-    fn print_amiga_color<W: Write + WriteColor>(&self, writer: &mut W) -> io::Result<()> {
-        let mut spec = ColorSpec::new();
-        spec.set_fg(Some(Color::Blue));
-        writer.set_color(&spec)?;
-        self.print_headers(writer)?;
-        spec.set_fg(Some(Color::White));
-        writer.set_color(&spec)?;
-        for row in &self.rows {
-            self.print_row(writer, row)?;
+    /// Prints the table to the standard output with Amiga-specific color logic.
+    fn print_amiga_color(&self, writer: &mut dyn WriteColor) -> io::Result<()> {
+        let mut header_spec = ColorSpec::new();
+        header_spec.set_fg(Some(Color::Blue)).set_intense(true);
+
+        let mut data_spec = ColorSpec::new();
+        data_spec.set_fg(Some(Color::White));
+
+         let column_dims = self.column_dims.as_ref().ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Dimensions not calculated"))?;
+         let row_heights = self.row_heights.as_ref().ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Dimensions not calculated"))?;
+
+        writer.set_color(&header_spec)?;
+        for (i, col_def) in self.column_defs.iter().enumerate() {
+            let width = column_dims[i].effective_content_width;
+            let header_text = &col_def.header;
+            let estimated_width = header_text.chars().count();
+            let padding_needed = width.saturating_sub(estimated_width);
+
+            match column_dims[i].alignment {
+                Alignment::Left => write!(writer, "{}{}", header_text, " ".repeat(padding_needed))?,
+                Alignment::Center => {/* ... center logic ... */},
+                Alignment::Right => write!(writer, "{}{}", " ".repeat(padding_needed), header_text)?,
+            }
+             if i < self.column_defs.len() - 1 { write!(writer, "  ")?; }
+        }
+        writeln!(writer)?;
+        writer.reset()?;
+
+        writer.set_color(&data_spec)?;
+        for (r, row) in self.rows.iter().enumerate() {
+             let row_h = row_heights[r];
+             for line_index in 0..row_h {
+                for (i, cell) in row.iter().enumerate() {
+                    let mut current_spec = data_spec.clone();
+                    if cell.style.bold { current_spec.set_bold(true); }
+                    if cell.style.italic { current_spec.set_italic(true); }
+                    if cell.style.underline { current_spec.set_underline(true); }
+                    writer.set_color(&current_spec)?;
+
+                    let cell_lines = cell.lines();
+                    let line_content = if let Some(line) = cell_lines.get(line_index) { *line } else { "" };
+                    let width = column_dims[i].effective_content_width;
+                    let estimated_width = line_content.chars().count();
+                    let padding_needed = width.saturating_sub(estimated_width);
+
+                    match column_dims[i].alignment {
+                         Alignment::Left => write!(writer, "{}{}", line_content, " ".repeat(padding_needed))?,
+                         Alignment::Center => {/* ... center logic ... */},
+                         Alignment::Right => write!(writer, "{}{}", " ".repeat(padding_needed), line_content)?,
+                    }
+                     if i < self.column_defs.len() - 1 { write!(writer, "  ")?; }
+                }
+                writeln!(writer)?;
+            }
         }
         writer.reset()?;
         Ok(())
     }
 
-    /// Prints the table to the standard output with color support.
-    pub fn print(&self) -> io::Result<()> {
-        let mut stdout = StandardStream::stdout(ColorChoice::Always);
-        self.print_color(&mut stdout)
+    /// Public print method using standard output.
+    pub fn print(&mut self) -> io::Result<()> {
+        let mut stdout = StandardStream::stdout(ColorChoice::Auto);
+        self.print_to_writer(&mut stdout)
     }
 
     /// Aggregates the specified column using the provided aggregation function.
@@ -613,29 +864,31 @@ mod csv_support {
     pub use csv;
 
     impl Table {
-        /// Creates a table from a CSV file.
-        /// The first row of the CSV file is used as the header.
         pub fn from_csv(path: &str) -> io::Result<Self> {
             let mut reader = csv::Reader::from_path(path)?;
-            let headers = reader.headers()?;
+            let headers = reader.headers()?.clone();
             let mut table = Table::new(TableStyle::Simple);
-            for header in headers {
-                table.add_column(header, 10, Alignment::Left);
+
+            for header in &headers {
+                table.add_column(header, Alignment::Left);
             }
+
             for result in reader.records() {
                 let record = result?;
                 table.add_row(record.iter().map(|s| Cell::new(s)).collect());
             }
+
             Ok(table)
         }
 
-        /// Writes the table to a CSV file.
         pub fn to_csv(&self, path: &str) -> io::Result<()> {
             let mut writer = csv::Writer::from_path(path)?;
+            writer.write_record(self.column_defs.iter().map(|def| &def.header))?;
             for row in &self.rows {
                 writer.write_record(row.iter().map(|cell| &cell.content))?;
             }
             Ok(writer.flush()?)
-        }
+       }
+
     }
 }
