@@ -42,6 +42,7 @@ fn test_add_column() {
     assert!(matches!(table.columns[0].alignment, Alignment::Left));
 }
 
+#[cfg(feature = "csv")]
 #[test]
 fn test_csv_usage() {
     let table = Table::from_csv("examples/data.csv").unwrap();

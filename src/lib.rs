@@ -7,8 +7,8 @@
 mod styles;
 
 use std::io::{self, Write};
-use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 use styles::STYLES;
+use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 #[cfg(test)]
 mod tests;
@@ -210,31 +210,6 @@ impl Table {
         }
     }
 
-    /// Creates a table from a CSV file.
-    /// The first row of the CSV file is used as the header.
-    pub fn from_csv(path: &str) -> io::Result<Self> {
-        let mut reader = csv::Reader::from_path(path)?;
-        let headers = reader.headers()?;
-        let mut table = Table::new(TableStyle::Simple);
-        for header in headers {
-            table.add_column(header, 10, Alignment::Left);
-        }
-        for result in reader.records() {
-            let record = result?;
-            table.add_row(record.iter().map(|s| Cell::new(s)).collect());
-        }
-        Ok(table)
-    }
-
-    /// Writes the table to a CSV file.
-    pub fn to_csv(&self, path: &str) -> io::Result<()> {
-        let mut writer = csv::Writer::from_path(path)?;
-        for row in &self.rows {
-            writer.write_record(row.iter().map(|cell| &cell.content))?;
-        }
-        Ok(writer.flush()?)
-    }
-
     /// Adds a column to the table.
     pub fn add_column(&mut self, header: &str, width: usize, alignment: Alignment) {
         self.columns.push(Column {
@@ -274,7 +249,11 @@ impl Table {
     pub fn sort_by_column(&mut self, column_index: usize, ascending: bool) {
         self.rows.sort_by(|a, b| {
             let ord = a[column_index].content.cmp(&b[column_index].content);
-            if ascending { ord } else { ord.reverse() }
+            if ascending {
+                ord
+            } else {
+                ord.reverse()
+            }
         });
     }
 
@@ -328,8 +307,14 @@ impl Table {
         for (i, _column) in self.columns.iter().enumerate() {
             if i == 0 {
                 subtotal_row.push(Cell::new("Subtotal"));
-            } else if group.iter().all(|row| row[i].content.parse::<f64>().is_ok()) {
-                let subtotal: f64 = group.iter().map(|row| row[i].content.parse::<f64>().unwrap()).sum();
+            } else if group
+                .iter()
+                .all(|row| row[i].content.parse::<f64>().is_ok())
+            {
+                let subtotal: f64 = group
+                    .iter()
+                    .map(|row| row[i].content.parse::<f64>().unwrap())
+                    .sum();
                 subtotal_row.push(Cell::new(&subtotal.to_string()));
             } else {
                 subtotal_row.push(Cell::new(""));
@@ -365,9 +350,24 @@ impl Table {
     fn print_headers(&self, writer: &mut dyn WriteColor) -> io::Result<()> {
         for (i, column) in self.columns.iter().enumerate() {
             match column.alignment {
-                Alignment::Left => write!(writer, "{:<width$}", column.header, width = column.width - 1)?,
-                Alignment::Center => write!(writer, "{:^width$}", column.header, width = column.width - 1)?,
-                Alignment::Right => write!(writer, "{:>width$}", column.header, width = column.width - 1)?,
+                Alignment::Left => write!(
+                    writer,
+                    "{:<width$}",
+                    column.header,
+                    width = column.width - 1
+                )?,
+                Alignment::Center => write!(
+                    writer,
+                    "{:^width$}",
+                    column.header,
+                    width = column.width - 1
+                )?,
+                Alignment::Right => write!(
+                    writer,
+                    "{:>width$}",
+                    column.header,
+                    width = column.width - 1
+                )?,
             }
             if i < self.columns.len() - 1 {
                 write!(writer, " ")?;
@@ -397,9 +397,30 @@ impl Table {
                 let padding = " ".repeat(cell.style.padding);
                 let formatted_line = cell.formatted_content();
                 match column.alignment {
-                    Alignment::Left => write!(writer, "{}{:width$}{}", padding, formatted_line, padding, width = column.width - 1)?,
-                    Alignment::Center => write!(writer, "{}{:^width$}{}", padding, formatted_line, padding, width = column.width - 1)?,
-                    Alignment::Right => write!(writer, "{}{:>width$}{}", padding, formatted_line, padding, width = column.width - 1)?,
+                    Alignment::Left => write!(
+                        writer,
+                        "{}{:width$}{}",
+                        padding,
+                        formatted_line,
+                        padding,
+                        width = column.width - 1
+                    )?,
+                    Alignment::Center => write!(
+                        writer,
+                        "{}{:^width$}{}",
+                        padding,
+                        formatted_line,
+                        padding,
+                        width = column.width - 1
+                    )?,
+                    Alignment::Right => write!(
+                        writer,
+                        "{}{:>width$}{}",
+                        padding,
+                        formatted_line,
+                        padding,
+                        width = column.width - 1
+                    )?,
                 }
                 writer.reset()?;
                 write!(writer, " ")?;
@@ -451,9 +472,30 @@ impl Table {
                 let padding = " ".repeat(cell.style.padding);
                 let formatted_line = cell.formatted_content();
                 match column.alignment {
-                    Alignment::Left => write!(writer, " {}{:width$}{} ", padding, formatted_line, padding, width = column.width)?,
-                    Alignment::Center => write!(writer, " {}{:^width$}{} ", padding, formatted_line, padding, width = column.width)?,
-                    Alignment::Right => write!(writer, " {}{:>width$}{} ", padding, formatted_line, padding, width = column.width)?,
+                    Alignment::Left => write!(
+                        writer,
+                        " {}{:width$}{} ",
+                        padding,
+                        formatted_line,
+                        padding,
+                        width = column.width
+                    )?,
+                    Alignment::Center => write!(
+                        writer,
+                        " {}{:^width$}{} ",
+                        padding,
+                        formatted_line,
+                        padding,
+                        width = column.width
+                    )?,
+                    Alignment::Right => write!(
+                        writer,
+                        " {}{:>width$}{} ",
+                        padding,
+                        formatted_line,
+                        padding,
+                        width = column.width
+                    )?,
                 }
                 writer.reset()?;
             }
@@ -472,11 +514,19 @@ impl Table {
     }
 
     /// Prints the table to the specified writer with styled style.
-    fn print_styled(&self, writer: &mut dyn WriteColor, style: &TableStyleConfig) -> io::Result<()> {
+    fn print_styled(
+        &self,
+        writer: &mut dyn WriteColor,
+        style: &TableStyleConfig,
+    ) -> io::Result<()> {
         self.print_line(writer, &style.top)?;
         self.print_row_styled(
             writer,
-            &self.columns.iter().map(|c| Cell::new(&c.header)).collect::<Vec<_>>(),
+            &self
+                .columns
+                .iter()
+                .map(|c| Cell::new(&c.header))
+                .collect::<Vec<_>>(),
             &style.row,
         )?;
         self.print_line(writer, &style.below_header)?;
@@ -531,16 +581,61 @@ impl Table {
 
     /// Calculates the average of the specified column.
     pub fn average_column(&self, column_index: usize) -> Option<f64> {
-        self.aggregate_column(column_index, |values| values.iter().sum::<f64>() / values.len() as f64)
+        self.aggregate_column(column_index, |values| {
+            values.iter().sum::<f64>() / values.len() as f64
+        })
     }
 
     /// Finds the minimum value in the specified column.
     pub fn min_column(&self, column_index: usize) -> Option<f64> {
-        self.aggregate_column(column_index, |values| *values.iter().min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap())
+        self.aggregate_column(column_index, |values| {
+            *values
+                .iter()
+                .min_by(|a, b| a.partial_cmp(b).unwrap())
+                .unwrap()
+        })
     }
 
     /// Finds the maximum value in the specified column.
     pub fn max_column(&self, column_index: usize) -> Option<f64> {
-        self.aggregate_column(column_index, |values| *values.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap())
+        self.aggregate_column(column_index, |values| {
+            *values
+                .iter()
+                .max_by(|a, b| a.partial_cmp(b).unwrap())
+                .unwrap()
+        })
+    }
+}
+
+#[cfg(feature = "csv")]
+mod csv_support {
+    use super::*;
+    pub use csv;
+
+    impl Table {
+        /// Creates a table from a CSV file.
+        /// The first row of the CSV file is used as the header.
+        pub fn from_csv(path: &str) -> io::Result<Self> {
+            let mut reader = csv::Reader::from_path(path)?;
+            let headers = reader.headers()?;
+            let mut table = Table::new(TableStyle::Simple);
+            for header in headers {
+                table.add_column(header, 10, Alignment::Left);
+            }
+            for result in reader.records() {
+                let record = result?;
+                table.add_row(record.iter().map(|s| Cell::new(s)).collect());
+            }
+            Ok(table)
+        }
+
+        /// Writes the table to a CSV file.
+        pub fn to_csv(&self, path: &str) -> io::Result<()> {
+            let mut writer = csv::Writer::from_path(path)?;
+            for row in &self.rows {
+                writer.write_record(row.iter().map(|cell| &cell.content))?;
+            }
+            Ok(writer.flush()?)
+        }
     }
 }

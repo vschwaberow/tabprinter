@@ -19,6 +19,11 @@ name = "basic_usage"
 path = "examples/basic_usage.rs"
 
 [[example]]
+name = "csv_usage"
+path = "examples/csv_usage.rs"
+required-features = ["csv"]
+
+[[example]]
 name = "different_styles"
 path = "examples/different_styles.rs"
 
@@ -34,6 +39,11 @@ path = "examples/group_by_subtotals.rs"
 name = "column_aggregations"
 path = "examples/column_aggregations.rs"
 
+
 [dependencies]
-csv = "1.3.0"
+csv = { version = "1.3.0", optional = true }
 termcolor = "1.4.1"
+
+[features]
+default = ["csv"]
+csv = ["dep:csv"]
