@@ -10,7 +10,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let headers = rdr.headers()?;
     for header in headers.iter() {
-        table.add_column(header, 20, Alignment::Left);
+        table.add_column(header, Alignment::Left);
     }
 
     for result in rdr.records() {
