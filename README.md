@@ -4,10 +4,26 @@
 
 ## Features
 
-- Multiple table styles: Simple, Grid, FancyGrid, Clean, Round, Banner, Block, and Amiga
-- Customizable column widths and alignments
-- Color output support (using termcolor)
-- Easy-to-use API for creating and populating tables
+- **Versatile Table Styles**: 
+  - 8 built-in styles: Simple, Grid, FancyGrid, Clean, Round, Banner, Block, and Amiga
+  - Support for both ASCII and Unicode border characters
+- **Flexible Content Handling**:
+  - Customizable column widths (fixed, percentage-based, or auto)
+  - Text alignment options (Left, Right, Center)
+  - Multi-line cell content support
+  - Automatic text wrapping
+- **Advanced Formatting**:
+  - Color output support via termcolor
+  - Bold, italic, and underline text formatting
+  - Custom cell background colors
+- **Output Options**:
+  - Direct terminal output
+  - String conversion for further processing
+  - File export capabilities
+- **Developer-Friendly**:
+  - Intuitive and easy-to-use API
+  - Minimal dependencies
+  - Comprehensive documentation and examples
 
 ## Installation
 
@@ -15,7 +31,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-tabprinter = "0.1.0"
+tabprinter = "0.2.1"
 ```
 
 ## Usage
@@ -24,22 +40,29 @@ Here's a basic example of how to use `tabprinter`:
 
 ```rust
 use tabprinter::{Table, TableStyle, Alignment};
+
 fn main() {
-let mut table = Table::new(TableStyle::Grid);
-table.add_column("Name", 10, Alignment::Left);
-table.add_column("Age", 5, Alignment::Right);
-table.add_column("City", 15, Alignment::Center);
-table.add_row(vec![
-"Alice".to_string(),
-"30".to_string(),
-"New York".to_string(),
-]);
-table.add_row(vec![
-"Bob".to_string(),
-"25".to_string(),
-"Los Angeles".to_string(),
-]);
-table.print().unwrap();
+    let mut table = Table::new(TableStyle::Grid);
+    
+    // Define columns with headers and alignment
+    table.add_column("Name", Alignment::Left);
+    table.add_column("Age", Alignment::Right);
+    table.add_column("City", Alignment::Center);
+    
+    // Add rows of data
+    table.add_row(vec![
+        "Alice".to_string(),
+        "30".to_string(),
+        "New York".to_string(),
+    ]);
+    table.add_row(vec![
+        "Bob".to_string(),
+        "25".to_string(),
+        "Los Angeles".to_string(),
+    ]);
+    
+    // Print the table to stdout
+    table.print().unwrap();
 }
 ```
 
@@ -47,10 +70,10 @@ This will output:
 
 ```bash
 +------------+-------+-----------------+
-| Name | Age | City |
+| Name       | Age   | City            |
 +------------+-------+-----------------+
-| Alice | 30 | New York |
-| Bob | 25 | Los Angeles |
+| Alice      | 30    | New York        |
+| Bob        | 25    | Los Angeles     |
 +------------+-------+-----------------+
 ```
 
@@ -92,6 +115,11 @@ Check out the `examples` directory for more usage examples:
 - `basic_usage.rs`: Demonstrates basic table creation and printing
 - `different_styles.rs`: Shows all available table styles
 - `custom_data.rs`: Example of using custom data structures with tables
+- `color_output.rs`: Demonstrates using colored output for tables
+- `custom_formatting.rs`: Shows how to apply custom formatting to table cells
+- `dynamic_tables.rs`: Examples of creating dynamically sized tables
+- `file_export.rs`: How to export tables to files instead of stdout
+- `complex_layouts.rs`: Advanced table layout configurations
 
 To run an example:
 
