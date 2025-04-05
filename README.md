@@ -115,11 +115,9 @@ Check out the `examples` directory for more usage examples:
 - `basic_usage.rs`: Demonstrates basic table creation and printing
 - `different_styles.rs`: Shows all available table styles
 - `custom_data.rs`: Example of using custom data structures with tables
-- `color_output.rs`: Demonstrates using colored output for tables
-- `custom_formatting.rs`: Shows how to apply custom formatting to table cells
-- `dynamic_tables.rs`: Examples of creating dynamically sized tables
-- `file_export.rs`: How to export tables to files instead of stdout
-- `complex_layouts.rs`: Advanced table layout configurations
+- `csv_usage.rs`: Example of CSV usage
+- `column_aggregatations.rs`: Example of Column Aggregrations
+- `group_by_subtotals.rs`: Example of Group by Subtotals
 
 To run an example:
 
