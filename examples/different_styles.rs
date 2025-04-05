@@ -22,9 +22,9 @@ fn main() {
         let mut table = Table::new(*style);
 
         // Add columns to the table
-        table.add_column("Name", 10, Alignment::Left);
-        table.add_column("Age", 5, Alignment::Right);
-        table.add_column("City", 15, Alignment::Center);
+        table.add_column("Name", Alignment::Left);
+        table.add_column("Age",Alignment::Right);
+        table.add_column("City", Alignment::Center);
 
         // Add rows to the table
         table.add_row(vec![
