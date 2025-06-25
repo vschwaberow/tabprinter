@@ -5,9 +5,9 @@
 
 mod styles;
 
-use std::io::{self, Write};
+use std::io;
 use styles::STYLES;
-use termcolor::{ColorSpec, ColorChoice, StandardStream, WriteColor};
+use termcolor::{ColorSpec, WriteColor};
 pub use termcolor::Color;
 
 #[cfg(test)]
@@ -106,8 +106,6 @@ struct ColumnDef {
 struct ColumnDim {
     /// Max estimated width (.chars().count()) needed for content alignment
     effective_content_width: usize,
-    /// Max padding specified for any cell in this column
-    max_padding: usize,
     /// Total width for drawing lines: eff_width + 2*max_pad + 2 spaces
     total_width_for_drawing: usize,
     /// Alignment for the column
@@ -178,11 +176,6 @@ impl Cell {
         }
     }
 
-    /// Splits the cell content into lines.
-    fn lines(&self) -> Vec<&str> {
-        self.content.lines().collect()
-    }
-
     /// Formats the cell content based on the style.
     fn formatted_content(&self) -> String {
         // Early return if no numeric formatting is needed
@@ -192,13 +185,13 @@ impl Cell {
 
         if let Ok(num) = self.content.trim().parse::<f64>() {
             let mut formatted_num_str = if let Some(dp) = self.style.decimal_places {
-                format!("{:.dp$}", num, dp = dp)
+                format!("{num:.dp$}")
             } else {
                 num.to_string() // Standard f64 to string conversion
             };
 
             if self.style.thousand_separator {
-                let mut parts: Vec<&str> = formatted_num_str.splitn(2, '.').collect();
+                let parts: Vec<&str> = formatted_num_str.splitn(2, '.').collect();
                 let mut integer_part_original = parts[0].to_string();
                 let decimal_part_str = if parts.len() > 1 { Some(parts[1]) } else { None };
 
@@ -218,7 +211,7 @@ impl Cell {
                     if digits_len > 0 { // Only add if there are digits
                         separated_digits.push_str(&integer_part_original[..first_group_len]);
 
-                        for chunk_bytes in integer_part_original[first_group_len..].as_bytes().chunks(3) {
+                        for chunk_bytes in integer_part_original.as_bytes()[first_group_len..].chunks(3) {
                             separated_digits.push(',');
                             separated_digits.push_str(std::str::from_utf8(chunk_bytes).unwrap_or(""));
                         }
@@ -226,10 +219,10 @@ impl Cell {
                     }
                 }
 
-                let final_integer_part = format!("{}{}", sign, integer_part_original);
+                let final_integer_part = format!("{sign}{integer_part_original}");
 
                 formatted_num_str = if let Some(dp_str) = decimal_part_str {
-                    format!("{}.{}", final_integer_part, dp_str)
+                    format!("{final_integer_part}.{dp_str}")
                 } else {
                     final_integer_part
                 };
@@ -237,16 +230,6 @@ impl Cell {
             return formatted_num_str;
         }
         self.content.clone()
-    }
-
-    // Get the maximum ESTIMATED width (.chars().count()) of any line in the cell
-    fn max_line_estimated_width(&self) -> usize {
-        self.lines().iter().map(|line| line.chars().count()).max().unwrap_or(0)
-    }
-
-    // Get number of lines
-    fn height(&self) -> usize {
-        self.lines().len().max(1)
     }
 }
 
@@ -339,19 +322,6 @@ impl Table {
         self.invalidate_dimensions();
     }
 
-    /// Auto-adjusts the widths of the columns based on the content.
-    // pub fn auto_adjust_widths(&mut self) {
-    //     for (i, col) in self.columns.iter_mut().enumerate() {
-    //         let header_len = col.header.len();
-    //         let max_cell = self
-    //             .rows
-    //             .iter()
-    //             .map(|row| row[i].content.len())
-    //             .max()
-    //             .unwrap_or(0);
-    //         col.width = header_len.max(max_cell) + 2;
-    //     }
-    // }
 
     /// Sorts the rows by the specified column index.
     /// If `ascending` is true, sorts in ascending order; otherwise, sorts in descending order.
@@ -372,7 +342,7 @@ impl Table {
     where
         F: Fn(&Vec<Cell>) -> bool,
     {
-        let filtered_rows = self.rows.iter().cloned().filter(predicate).collect();
+        let filtered_rows = self.rows.iter().filter(|&x| predicate(x)).cloned().collect();
         Table {
             column_defs: self.column_defs.clone(),
             rows: filtered_rows,
@@ -594,7 +564,6 @@ impl Table {
             let total_width = content_width + default_cell_padding * 2; // Add padding on both sides
             ColumnDim {
                 effective_content_width: total_width, // This is the total width including padding
-                max_padding: default_cell_padding,
                 total_width_for_drawing: total_width,
                 alignment: col_def.alignment,
             }
@@ -608,13 +577,13 @@ impl Table {
     /// Prints the table to the specified writer with simple style and color support.
     fn print_simple_color(&mut self, writer: &mut dyn WriteColor) -> io::Result<()> {
         self.ensure_dimensions();
-        let column_dims = self.column_dims.as_ref().ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Dimensions not calculated (print_simple_color:column_dims)"))?;
-        let row_heights = self.row_heights.as_ref().ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Dimensions not calculated (print_simple_color:row_heights)"))?;
+        let column_dims = self.column_dims.as_ref().ok_or_else(|| io::Error::other( "Dimensions not calculated (print_simple_color:column_dims)"))?;
+        let row_heights = self.row_heights.as_ref().ok_or_else(|| io::Error::other( "Dimensions not calculated (print_simple_color:row_heights)"))?;
 
         // Print header
         if !self.column_defs.is_empty() {
             let header_cells: Vec<Cell> = self.column_defs.iter().map(|def| Cell::new(&def.header)).collect();
-            let header_actual_height = row_heights.get(0).copied().unwrap_or(0);
+            let header_actual_height = row_heights.first().copied().unwrap_or(0);
             if header_actual_height > 0 {
                 for line_idx in 0..header_actual_height {
                     self.print_row_simple_color_line(writer, &header_cells, line_idx, column_dims)?;
@@ -640,13 +609,13 @@ impl Table {
     /// Prints the table to the specified writer with simple style.
     fn print_simple(&mut self, writer: &mut dyn WriteColor) -> io::Result<()> {
         self.ensure_dimensions();
-        let column_dims = self.column_dims.as_ref().ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Dimensions not calculated (print_simple:column_dims)"))?;
-        let row_heights = self.row_heights.as_ref().ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Dimensions not calculated (print_simple:row_heights)"))?;
+        let column_dims = self.column_dims.as_ref().ok_or_else(|| io::Error::other( "Dimensions not calculated (print_simple:column_dims)"))?;
+        let row_heights = self.row_heights.as_ref().ok_or_else(|| io::Error::other( "Dimensions not calculated (print_simple:row_heights)"))?;
 
         // Print header
         if !self.column_defs.is_empty() {
             let header_cells: Vec<Cell> = self.column_defs.iter().map(|def| Cell::new(&def.header)).collect();
-            let header_actual_height = row_heights.get(0).copied().unwrap_or(0); // Height for header row
+            let header_actual_height = row_heights.first().copied().unwrap_or(0); // Height for header row
             if header_actual_height > 0 { // Only print header if it has content/height
                 for line_idx in 0..header_actual_height {
                     self.print_row_simple_line(writer, &header_cells, line_idx, column_dims)?;
@@ -739,7 +708,7 @@ impl Table {
             write!(writer, "{}", " ".repeat(final_padding_left))?;
             let available_width_for_content = width.saturating_sub(final_padding_left).saturating_sub(final_padding_right);
             let display_content: String = content_line.chars().take(available_width_for_content).collect();
-            write!(writer, "{}", display_content)?;
+            write!(writer, "{display_content}")?;
             write!(writer, "{}", " ".repeat(width.saturating_sub(display_content.chars().count()).saturating_sub(final_padding_left)))?;
 
             writer.reset()?;
@@ -802,7 +771,7 @@ impl Table {
             // Truncate content_line if it's too long with padding
             let available_width_for_content = width.saturating_sub(final_padding_left).saturating_sub(final_padding_right);
             let display_content: String = content_line.chars().take(available_width_for_content).collect();
-            write!(writer, "{}", display_content)?;
+            write!(writer, "{display_content}")?;
             write!(writer, "{}", " ".repeat(width.saturating_sub(display_content.chars().count()).saturating_sub(final_padding_left)))?;
 
 
@@ -815,13 +784,13 @@ impl Table {
     /// Prints the table to the standard output with Amiga-specific color logic.
     fn print_amiga_color(&mut self, writer: &mut dyn WriteColor) -> io::Result<()> {
         self.ensure_dimensions();
-        let column_dims = self.column_dims.as_ref().ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Dimensions not calculated (print_amiga_color:column_dims)"))?;
-        let row_heights = self.row_heights.as_ref().ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Dimensions not calculated (print_amiga_color:row_heights)"))?;
+        let column_dims = self.column_dims.as_ref().ok_or_else(|| io::Error::other( "Dimensions not calculated (print_amiga_color:column_dims)"))?;
+        let row_heights = self.row_heights.as_ref().ok_or_else(|| io::Error::other( "Dimensions not calculated (print_amiga_color:row_heights)"))?;
 
         // Print header
         if !self.column_defs.is_empty() {
             let header_cells: Vec<Cell> = self.column_defs.iter().map(|def| Cell::new(&def.header)).collect();
-            let header_actual_height = row_heights.get(0).copied().unwrap_or(0);
+            let header_actual_height = row_heights.first().copied().unwrap_or(0);
 
             if header_actual_height > 0 {
                 let mut header_spec = ColorSpec::new();
@@ -886,7 +855,7 @@ impl Table {
         content_line: &str,
         dim: &ColumnDim,
         cell_style: &CellStyle, // Pass full CellStyle for alignment etc.
-        is_amiga: bool, // Flag for Amiga specific color choices if needed beyond CellStyle.color
+        _is_amiga: bool, // Flag for Amiga specific color choices if needed beyond CellStyle.color
     ) -> io::Result<()> {
         let effective_width = dim.effective_content_width;
         let line_char_count = content_line.chars().count();
@@ -905,7 +874,7 @@ impl Table {
             }
         };
         write!(writer, "{}", " ".repeat(pad_left))?;
-        write!(writer, "{}", content_line)?; // Already a single line
+        write!(writer, "{content_line}")?;
         write!(writer, "{}", " ".repeat(pad_right))?;
         Ok(())
     }
@@ -918,8 +887,8 @@ impl Table {
         style_cfg: &TableStyleConfig,
     ) -> io::Result<()> {
         self.ensure_dimensions();
-        let column_dims = self.column_dims.as_ref().ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Dimensions not calculated (print_styled:column_dims)"))?;
-        let row_heights = self.row_heights.as_ref().ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Dimensions not calculated (print_styled:row_heights)"))?;
+        let column_dims = self.column_dims.as_ref().ok_or_else(|| io::Error::other( "Dimensions not calculated (print_styled:column_dims)"))?;
+        let row_heights = self.row_heights.as_ref().ok_or_else(|| io::Error::other( "Dimensions not calculated (print_styled:row_heights)"))?;
 
         if column_dims.is_empty() { return Ok(()); }
 
@@ -928,7 +897,7 @@ impl Table {
         // Print header
         if !self.column_defs.is_empty() {
             let header_cells: Vec<Cell> = self.column_defs.iter().map(|def| Cell::new(&def.header)).collect();
-            let header_actual_height = row_heights.get(0).copied().unwrap_or(0);
+            let header_actual_height = row_heights.first().copied().unwrap_or(0);
 
             if header_actual_height > 0 {
                 for line_idx in 0..header_actual_height {
@@ -997,7 +966,7 @@ impl Table {
 
             let content_len = content_line.chars().count();
             let alignment = cell_style.align.unwrap_or(dim.alignment);
-            let (padding_left, padding_right) = match alignment {
+            let (padding_left, _padding_right) = match alignment {
                 Alignment::Left => (cell_style.padding, width.saturating_sub(content_len).saturating_sub(cell_style.padding)),
                 Alignment::Right => (width.saturating_sub(content_len).saturating_sub(cell_style.padding), cell_style.padding),
                 Alignment::Center => {
@@ -1012,7 +981,7 @@ impl Table {
             let final_padding_right = width.saturating_sub(content_len).saturating_sub(final_padding_left);
 
             write!(writer, "{}", " ".repeat(final_padding_left))?;
-            write!(writer, "{}", content_line)?;
+            write!(writer, "{content_line}")?;
             write!(writer, "{}", " ".repeat(final_padding_right))?;
 
             writer.reset()?;
