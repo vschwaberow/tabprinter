@@ -144,8 +144,8 @@ fn test_number_formatting() {
     table.print_to_writer(&mut buffer).unwrap();
     let result = String::from_utf8(buffer.into_inner()).unwrap();
     
-    assert!(result.contains("1234"));
-    assert!(result.contains(".57") || result.contains(".56"));
+    assert!(result.contains("1,234"));
+    assert!(result.contains(".57"));
 }
 
 #[test]
@@ -240,4 +240,42 @@ fn test_max_column() {
     invalid_table.add_column("Value", Alignment::Right);
     invalid_table.add_row(vec![Cell::new("abc")]);
     assert_eq!(invalid_table.max_column(0), None);
+}
+
+#[test]
+fn test_cell_background_color() {
+    let mut table = Table::new(TableStyle::Simple);
+    table.add_column("Name", Alignment::Left);
+    let mut cell_with_bg = Cell::new("Alice");
+    cell_with_bg.style.background_color = Some(Color::Red);
+    table.add_row(vec![cell_with_bg]);
+
+    let cell_no_bg = Cell::new("Bob");
+    table.add_row(vec![cell_no_bg]);
+
+    let mut buffer = termcolor::Buffer::ansi();
+    table.ensure_dimensions(); 
+    table.print_color(&mut buffer).unwrap();
+
+    let output = String::from_utf8(buffer.into_inner()).unwrap();
+    
+    assert!(output.contains("\u{1b}[41m Alice \u{1b}[0m"));
+    assert!(output.contains("Bob"));
+    assert!(!output.contains("\u{1b}[41mBob"));
+}
+
+#[test]
+fn test_print_color_amiga_with_background() {
+    let mut table = Table::new(TableStyle::Amiga);
+    table.add_column("Name", Alignment::Left);
+    let mut cell_with_bg = Cell::new("AmigaUser");
+    cell_with_bg.style.background_color = Some(Color::Yellow);
+    table.add_row(vec![cell_with_bg]);
+
+    let mut buffer = termcolor::Buffer::ansi();
+    table.ensure_dimensions();
+    table.print_color(&mut buffer).unwrap();
+    let output = String::from_utf8(buffer.into_inner()).unwrap();
+
+    assert!(output.contains("\u{1b}[43mAmigaUser"));
 }
